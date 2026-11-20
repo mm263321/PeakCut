@@ -2246,7 +2246,7 @@ function drawClipDlg(full) {
   D.sig = sig;
   put($("#dposts"), postPills(c));
   // The clip editor is built dynamically; initialize custom controls explicitly after its markup exists.
-  window.initPeakCutCustomLayout?.();
+  if (full) window.initPeakCutCustomLayout?.();
 }
 function postText() {   // the post text as it is in the clip editor right now
   const v = k => $(`#clipdlg [data-f="${k}"]`).value;
@@ -2622,6 +2622,6 @@ $("#main").addEventListener("scroll", () => $(".topbar").classList.toggle("stuck
   setInterval(async () => { try { S.status = await api("/api/status"); drawShell(); if (S.view === "overview") drawOverview(); checkNew(); } catch {} }, 15000);
 })();
 </script>
-<script src="/assets/custom-layout.js?v=2"></script>
+<script src="/assets/custom-layout.js?v=3"></script>
 </body>
 </html>
