@@ -61,6 +61,12 @@ for quality, expected_crf in (("balanced", "21"), ("high", "18"), ("maximum", "1
     check(quality + " profile applies its software quality setting",
           "-crf" in args and args[args.index("-crf") + 1] == expected_crf)
 
+ass_4k = render.build_ass([], 0, 1.2, "WAIT FOR IT", "bounce", [], 600, 2760, 2160, 3840)
+check("4K ASS caption canvas uses native coordinates",
+      "PlayResX: 2160" in ass_4k and "PlayResY: 3840" in ass_4k and r"\\fs192" in ass_4k)
+filter_4k = render._filter("blur", 1620, width=2160, height=3840)
+check("4K layout filter composes at 2160x3840", "scale=2160:3840" in filter_4k)
+
 # Make short real MP4s at every requested size. This checks that the composition and
 # captions use the selected dimensions, not a 1080p render enlarged afterward.
 work = Path(tempfile.mkdtemp(prefix="pc-export-render-"))
