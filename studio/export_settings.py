@@ -94,7 +94,7 @@ def installed_encoders() -> frozenset[str]:
         if result.returncode not in (0, 1):
             return frozenset()
         return frozenset(re.findall(
-            r"(?m)^\s*[VAS\.]{6}\s+([A-Za-z0-9_.-]+)\s",
+            r"(?m)^\s*[A-Z.]{6}\s+([A-Za-z0-9_.-]+)\s",
             result.stdout + "\n" + result.stderr,
         ))
     except (OSError, subprocess.TimeoutExpired):
