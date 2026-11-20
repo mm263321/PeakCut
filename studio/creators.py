@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import config, ctx
+from . import config, ctx, export_settings
 
 
 def _root() -> Path:
@@ -21,7 +21,7 @@ DEFAULTS = {"name": "", "channel": "", "style": "bounce", "layout": "blur", "cap
             "trigger_words": "clip that, clip it",
             "autopost": False, "accounts": [], "post_min_score": 75, "post_gap_min": 45, "daily_cap": 6,
             "privacy": "public", "post_footer": "", "rate_per_1k": 0.0, "channels": {},
-            "lang": "en"}    # the language this creator speaks: picks the speech model, for live recordings too
+            "lang": "en", **export_settings.DEFAULTS}    # the language this creator speaks: picks the speech model, for live recordings too
 PLATFORMS = ("youtube", "twitch", "kick")
 
 
@@ -103,6 +103,8 @@ def _clean(data: dict) -> dict:
         elif k == "lang":
             from . import fetch_model
             v = v if fetch_model.known(v) else "en"
+        elif k in export_settings.DEFAULTS:
+            v = export_settings.clean({k: v})[k]
         else:
             v = str(v).strip()[:300]
         out[k] = v
