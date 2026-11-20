@@ -149,8 +149,8 @@ def _hook_events(hook, dur, y, width=W, height=H, scale=1.0):
         cut = min(range(1, len(words)), key=lambda i: max(f.width(" ".join(words[:i]), size), f.width(" ".join(words[i:]), size)))
         lines = [" ".join(words[:cut]), " ".join(words[cut:])]
     widest = max(f.width(l, size) for l in lines)
-    if widest > HOOK["max_w"]:
-        size = max(40, int(size * HOOK["max_w"] / widest))
+    if widest > cfg["max_w"]:
+        size = max(round(40 * scale), int(size * cfg["max_w"] / widest))
         widest = max(f.width(l, size) for l in lines)
     line_h = f.em(size) * 1.16
     bw, bh = widest + 2 * cfg["pad_x"], line_h * len(lines) + 2 * cfg["pad_y"]
