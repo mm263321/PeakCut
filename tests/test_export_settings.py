@@ -1,7 +1,9 @@
 """Export setting validation and encoder fallback tests."""
 import os
+import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 os.environ["PEAKCUT_DATA"] = tempfile.mkdtemp(prefix="pc-export-settings-")
 sys.path.insert(0, ".")
@@ -64,9 +66,6 @@ for quality, expected_crf in (("balanced", "23"), ("high", "20"), ("maximum", "1
 work = Path(tempfile.mkdtemp(prefix="pc-export-render-"))
 source = work / "source.mp4"
 try:
-    import subprocess
-    from pathlib import Path
-
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=1.2",
          "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1.2", "-shortest",
