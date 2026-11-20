@@ -40,16 +40,22 @@ def clean(value) -> dict:
     return {"version": 1, **out}
 
 
-def _even(value: float, maximum: int) -> int:
-    """An even pixel coordinate or size for yuv420p output."""
+def _even_pos(value: float, maximum: int) -> int:
+    """An even pixel position; zero is a valid edge of the output."""
+    n = int(round(value / 2.0) * 2)
+    return max(0, min(maximum - 2, n))
+
+
+def _even_size(value: float, maximum: int) -> int:
+    """An even pixel size, for yuv420p output."""
     n = int(round(value / 2.0) * 2)
     return max(2, min(maximum - maximum % 2, n))
 
 
 def _frame_pixels(box, width: int, height: int):
     x, y, w, h = box
-    px, py = _even(x * width, width), _even(y * height, height)
-    pw, ph = _even(w * width, width), _even(h * height, height)
+    px, py = _even_pos(x * width, width), _even_pos(y * height, height)
+    pw, ph = _even_size(w * width, width), _even_size(h * height, height)
     pw, ph = min(pw, width - px), min(ph, height - py)
     pw, ph = pw - pw % 2, ph - ph % 2
     if pw < 2 or ph < 2:
