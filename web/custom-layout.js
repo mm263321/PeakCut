@@ -263,6 +263,9 @@
     if (!dlg) return;
     const layout=$('[data-f="layout"]',dlg), m=$("#pc-layout-mount",dlg);
     if (!layout || !m) return;
+    // buildPanel() appends the editor to this dynamically-created mount element.
+    // Keep the current clip dialog mount in the module state before building it.
+    mount = m;
     if (![...layout.options].some(o=>o.value==="custom")) {
       const option=document.createElement("option"); option.value="custom"; option.textContent="Custom layout editor"; layout.add(option);
     }
