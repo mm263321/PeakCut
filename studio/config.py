@@ -257,5 +257,5 @@ def _read_google_client() -> tuple:
 
 
 # ---------------------------------------------------------------- video
-MAX_SOURCE_HEIGHT = 1080
+MAX_SOURCE_HEIGHT = 2160  # source downloads may use the highest available quality up to 4K
 OUT_W, OUT_H, OUT_FPS = 1080, 1920, 30
