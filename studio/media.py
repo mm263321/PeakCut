@@ -264,7 +264,7 @@ def download_audio(url: str, job_dir: Path, on_progress=None) -> Path:
     return _biggest(job_dir, "audio_src")
 
 
-def download(url: str, job_dir: Path, height=720) -> Path:
+def download(url: str, job_dir: Path, height=2160) -> Path:
     """The whole video. Used for shorter videos, where this is quicker than fetching pieces."""
     with _youtube_guard(url), _ydl({"format": _video_format(height), "merge_output_format": "mp4",
                                     "outtmpl": str(job_dir / "source.%(ext)s")}) as ydl:
@@ -272,7 +272,7 @@ def download(url: str, job_dir: Path, height=720) -> Path:
     return _biggest(job_dir, "source")
 
 
-def download_section(url: str, out_dir: Path, stem: str, start: float, end: float, height=720, exact=False) -> Path:
+def download_section(url: str, out_dir: Path, stem: str, start: float, end: float, height=2160, exact=False) -> Path:
     """Just one stretch of the video. The cut lands on a keyframe, so find_offset() pins the true start; with
     exact=True the cut is made at exactly `start` instead (slower), for when there is nothing to match against."""
     from yt_dlp.utils import download_range_func
