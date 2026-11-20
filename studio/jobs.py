@@ -390,9 +390,11 @@ def request_render(jid, cid, changes: dict):
     for k in ("hook", "title", "description", "style", "layout"):
         if k in changes:
             new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000}.get(k, 20)]
-    if new.get("layout") == "custom" or "custom_layout" in changes:
-        raw_layout = changes.get("custom_layout", new.get("custom_layout"))
+    if new.get("layout") == "custom":
+        raw_layout = changes.get("custom_layout") or new.get("custom_layout")
         new["custom_layout"] = custom_layout.clean(raw_layout)
+    elif changes.get("custom_layout"):
+        new["custom_layout"] = custom_layout.clean(changes["custom_layout"])
     if "hashtags" in changes:
         new["hashtags"] = clean_hashtags(changes["hashtags"])
     if new.get("style") not in render.STYLES:
