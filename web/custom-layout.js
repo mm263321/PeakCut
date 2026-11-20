@@ -299,7 +299,13 @@
       }
     }
   }, true);
+  // Explicit initializer for PeakCut's dynamically-created clip dialog.
+  window.initPeakCutCustomLayout = ensure;
   const observer=new MutationObserver(() => ensure());
   observer.observe($("#clipdlg") || document.body,{childList:true,subtree:true});
-  setTimeout(ensure,0);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ensure, {once:true});
+  } else {
+    setTimeout(ensure,0);
+  }
 })();
