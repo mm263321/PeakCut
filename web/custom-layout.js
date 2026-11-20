@@ -276,19 +276,23 @@
         state=parsed && parsed.version===1 ? parsed : defaults();
       } catch { state=defaults(); }
       if (!state.source || !state.frames || !state.frames.facecam || !state.frames.gameplay) state=defaults();
-      buildPanel();
-      if (m.dataset.layout==="custom") layout.value="custom";
     }
     if (layout.value==="custom") {
-      panel.hidden=false; refresh();
-      if (!validSource()) message("Select the streamer facecam and gameplay areas from the original video.");
-    } else if (panel) panel.hidden=true;
+      // Build the heavier preview UI only when the user actually selects the custom editor.
+      if (!panel || panel.parentElement !== m) buildPanel();
+      panel.hidden=false;
+      if (panel.dataset.initialized !== "1") {
+        panel.dataset.initialized="1";
+        refresh();
+        if (!validSource()) message("Select the streamer facecam and gameplay areas from the original video.");
+      }
+    } else if (panel) {
+      panel.hidden=true;
+      panel.dataset.initialized="";
+    }
   }
   document.addEventListener("change", e => {
-    if (e.target.matches('#clipdlg [data-f="layout"]')) {
-      ensure();
-      if (panel) { panel.hidden=e.target.value!=="custom"; refresh(); }
-    }
+    if (e.target.matches('#clipdlg [data-f="layout"]')) ensure();
   });
   document.addEventListener("click", e => {
     const button=e.target.closest('[data-act="remake"]');
@@ -303,12 +307,7 @@
     }
   }, true);
   // Explicit initializer for PeakCut's dynamically-created clip dialog.
+  // Do not observe dialog mutations: drawing our own selection boxes would trigger
+  // the observer again and can freeze the browser in a recursive refresh loop.
   window.initPeakCutCustomLayout = ensure;
-  const observer=new MutationObserver(() => ensure());
-  observer.observe($("#clipdlg") || document.body,{childList:true,subtree:true});
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", ensure, {once:true});
-  } else {
-    setTimeout(ensure,0);
-  }
 })();
