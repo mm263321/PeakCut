@@ -2223,7 +2223,8 @@ function drawClipDlg(full) {
         <label class="f">Big text<input data-f="hook" value="${esc(c.hook)}"></label>
         <label class="sw"><input type="checkbox" data-f="captions" data-caption-toggle ${c.captions === false ? "" : "checked"}>Generate captions</label>
         <div class="two"><label class="f">Caption style<select data-f="style" data-caption-style ${c.captions === false ? "disabled" : ""}>${opts(S.status.styles, c.style)}</select></label>
-          <label class="f">Layout<select data-f="layout">${opts(S.status.layouts, c.layout)}</select></label></div>
+          <label class="f">Layout<select data-f="layout">${opts(S.status.layouts, c.layout)}<option value="custom" ${c.layout === "custom" ? "selected" : ""}>Custom layout editor</option></select></label></div>
+        <div id="pc-layout-mount" data-jid="${j.id}" data-cid="${esc(c.id)}" data-start="${c.start}" data-offset="${c.src_offset || 0}" data-layout="${esc(c.layout)}" data-custom="${esc(JSON.stringify(c.custom_layout || {}))}"></div>
         <div class="two"><label class="f">Start (seconds)<input data-f="start" type="number" step="0.5" value="${c.start}"></label>
           <label class="f">End (seconds)<input data-f="end" type="number" step="0.5" value="${c.end}"></label></div>
         <div class="row" style="justify-content:space-between;align-items:center"><h3>Post text</h3>
@@ -2619,5 +2620,6 @@ $("#main").addEventListener("scroll", () => $(".topbar").classList.toggle("stuck
   setInterval(async () => { try { S.status = await api("/api/status"); drawShell(); if (S.view === "overview") drawOverview(); checkNew(); } catch {} }, 15000);
 })();
 </script>
+<script src="/assets/custom-layout.js"></script>
 </body>
 </html>
