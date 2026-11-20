@@ -55,3 +55,15 @@ studio/render.py builds the composition and caption coordinates at the selected 
 Existing single MP4 downloads, bulk ZIP downloads, clip history and the 1080p export default remain supported. The default source-download ceiling is now 2160p; uploaded files are not re-downloaded or altered before clipping.
 
 Test: tests/test_export_settings.py checks settings validation, codec fallback order, quality profiles and real 1080p/2K/4K MP4 renders.
+
+## Phase 2b: creator-specific live export preferences
+
+Creator Setup → Live export settings stores a separate output resolution, encoder and quality for each creator.
+
+- New live sessions copy the creator's export profile into the live job defaults.
+- `studio/live.py` applies the current creator profile in the shared live clip creation path. AI highlights, manual 30/60-second clips and transcript trigger-word clips all use this path.
+- Updating Creator Setup during an active recording updates the Session settings, so the next generated clip uses the new profile. Already rendered clips are not changed.
+- `studio/jobs.py` resolves export precedence as job/creator defaults first, then saved clip-level settings. Individual clip re-renders can therefore override the creator's defaults.
+- The source download ceiling does not control live stream capture quality; live recording uses the stream quality PeakCut receives.
+
+Test: `tests/test_creator_live_export.py` checks per-creator isolation, live-job inheritance, settings changes during a recording, and per-clip re-render overrides.
