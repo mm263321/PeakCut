@@ -58,6 +58,7 @@ def main() -> int:
                 ("no sign-in, and the AI key from the dashboard", ["tests/test_local.py"]),
                 ("Hindi and Urdu captions in Roman letters", ["tests/test_roman.py"]),
                 ("turning captions off and back on", ["tests/test_captions.py"]),
+                ("dragging big-text and caption positions", ["tests/test_positions.py"]),
                 ("optional clipping method defaults and overrides", ["tests/test_clip_method.py"]),
                 ("visual judge scoring and graceful fallback", ["tests/test_visual_judge.py"]),
                 ("Advanced AI live decisions and the unchanged classic path", ["tests/test_live_visual.py"]),

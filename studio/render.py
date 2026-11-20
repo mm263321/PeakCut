@@ -1,4 +1,5 @@
 """Turns a time range into a vertical clip: 9:16 layout, bouncy word captions, hook title, cover."""
+import math
 import re
 import shutil
 import subprocess
@@ -85,6 +86,33 @@ class _Font:
 
 
 CAPTION_LEAD = 0.0  # measured: word stamps are within 0.15 s of the voice, so no shift is needed
+
+
+def clean_position(value):
+    """Validate a normalized (0..1) centre position saved by the draggable clip editor."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        import json
+        try:
+            value = json.loads(value)
+        except (TypeError, ValueError) as e:
+            raise ValueError("The text position is not valid. Drag it into place again.") from e
+    if not isinstance(value, dict):
+        raise ValueError("The text position is not valid. Drag it into place again.")
+    out = {}
+    for axis in ("x", "y"):
+        raw = value.get(axis)
+        if isinstance(raw, bool):
+            raise ValueError("The text position is not valid. Drag it into place again.")
+        try:
+            number = float(raw)
+        except (TypeError, ValueError, OverflowError) as e:
+            raise ValueError("The text position is not valid. Drag it into place again.") from e
+        if not math.isfinite(number):
+            raise ValueError("The text position is not valid. Drag it into place again.")
+        out[axis] = round(max(0.0, min(1.0, number)), 6)
+    return out
 def install_fonts():
     """Copy the bundled caption fonts next to the data, so captions look the same on every machine and server."""
     src = Path(__file__).resolve().parent / "fonts"
@@ -150,7 +178,7 @@ def geometry(src_w, src_h, layout, width=W, height=H):
     return layout, fg_h, max(round(230 * scale), top - round(190 * scale)), min(round(1640 * scale), top + fg_h + round(180 * scale))
 
 
-def _hook_events(hook, dur, y, width=W, height=H, scale=1.0):
+def _hook_events(hook, dur, y, width=W, height=H, scale=1.0, position=None):
     """The heading: dark text in a white rounded box that fits it, on one line or two balanced ones."""
     cfg = dict(HOOK)
     for key in ("size", "pad_x", "pad_y", "radius", "max_w"):
@@ -169,7 +197,11 @@ def _hook_events(hook, dur, y, width=W, height=H, scale=1.0):
         widest = max(f.width(l, size) for l in lines)
     line_h = f.em(size) * 1.16
     bw, bh = widest + 2 * cfg["pad_x"], line_h * len(lines) + 2 * cfg["pad_y"]
-    x0, y0, r = (width - bw) / 2, y - bh / 2, min(cfg["radius"], bh / 2)
+    cx = width * position["x"] if position else width / 2
+    cy_center = height * position["y"] if position else y
+    cx = max(bw / 2 + 8, min(width - bw / 2 - 8, cx)) if bw <= width - 16 else width / 2
+    cy_center = max(bh / 2 + 8, min(height - bh / 2 - 8, cy_center)) if bh <= height - 16 else height / 2
+    x0, y0, r = cx - bw / 2, cy_center - bh / 2, min(cfg["radius"], bh / 2)
     x1, y1 = x0 + bw, y0 + bh
     n = lambda v: f"{v:.0f}"                                                         # noqa: E731
     box = (f"m {n(x0 + r)} {n(y0)} l {n(x1 - r)} {n(y0)} b {n(x1)} {n(y0)} {n(x1)} {n(y0)} {n(x1)} {n(y0 + r)} "
@@ -179,12 +211,13 @@ def _hook_events(hook, dur, y, width=W, height=H, scale=1.0):
     span = f"{_ts(0)},{_ts(dur)}"
     ev = [f"Dialogue: 3,{span},Hook,,0,0,0,,{{\\an7\\pos(0,0)\\fad(160,0)\\c&H{HOOK['box']}&\\p1}}{box}{{\\p0}}"]
     for i, line in enumerate(lines):
-        cy = y - line_h * (len(lines) - 1) / 2 + i * line_h - f.cap_shift(size)
-        ev.append(f"Dialogue: 4,{span},Hook,,0,0,0,,{{\\an5\\pos({width // 2},{cy:.0f})\\fad(160,0)\\fs{size}}}{line}")
+        cy = cy_center - line_h * (len(lines) - 1) / 2 + i * line_h - f.cap_shift(size)
+        ev.append(f"Dialogue: 4,{span},Hook,,0,0,0,,{{\\an5\\pos({cx:.0f},{cy:.0f})\\fad(160,0)\\fs{size}}}{line}")
     return ev
 
 
-def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y, width=W, height=H) -> str:
+def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y, width=W, height=H,
+              hook_position=None, caption_position=None) -> str:
     scale = width / W
     st = dict(STYLES.get(style_name, STYLES["bounce"]))
     st["size"] = round(st["size"] * scale)
@@ -208,7 +241,11 @@ Style: Hook,{HOOK['font']},{HOOK['size']},&H00{HOOK['ink']},&H00{HOOK['ink']},&H
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     dur = end - start
-    ev = _hook_events(_clean(hook), dur, hook_y, width, height, scale)
+    hook_position = clean_position(hook_position)
+    caption_position = clean_position(caption_position)
+    caption_cx = width * caption_position["x"] if caption_position else width / 2
+    caption_center_y = height * caption_position["y"] if caption_position else cap_y
+    ev = _hook_events(_clean(hook), dur, hook_y, width, height, scale, hook_position)
     f = _Font.get(st["font"])
     inside = [dict(w, w=_clean(w["w"])) for w in words if w["s"] >= start - 0.05 and w["s"] < end]
     inside = sorted((w for w in inside if w["w"]), key=lambda w: w["s"])
@@ -229,7 +266,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # they are not placed one by one. The line is drawn whole and centred, in a font the system has for it.
             line = " ".join(texts)
             fs = max(round(44 * scale), min(int(st["size"] * 0.7), int(1500 * scale / max(1, len(line)) * 1.6)))
-            ev.append(f"Dialogue: 1,{_ts(g_start)},{_ts(g_end)},Cap,,60,60,0,,{{\\an5\\pos({width // 2},{cap_y:.0f})\\q0\\fs{fs}}}{line}")
+            approx_w = min(cap_max_w, max(1, len(line) * fs * 0.55))
+            cx = max(approx_w / 2 + 6, min(width - approx_w / 2 - 6, caption_cx))
+            cy = max(fs * 0.8, min(height - fs * 0.8, caption_center_y))
+            ev.append(f"Dialogue: 1,{_ts(g_start)},{_ts(g_end)},Cap,,60,60,0,,{{\\an5\\pos({cx:.0f},{cy:.0f})\\q0\\fs{fs}}}{line}")
             continue
         size = st["size"]
         gap = f.width("n n", size) - 2 * f.width("n", size) + (2 * st["outline"] + 6) * size / st["size"]   # a space, plus room for both outlines
@@ -238,8 +278,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             size = max(round(36 * scale), int(size * cap_max_w / total))
             gap = f.width("n n", size) - 2 * f.width("n", size) + (2 * st["outline"] + 6) * size / st["size"]   # a space, plus room for both outlines
             total = sum(f.width(t, size) for t in texts) + gap * (len(texts) - 1)
-        cy = cap_y - f.cap_shift(size)
-        x = (width - total) / 2
+        cx = max(total / 2 + 6, min(width - total / 2 - 6, caption_cx))
+        cy = max(size * 0.8, min(height - size * 0.8, caption_center_y)) - f.cap_shift(size)
+        x = cx - total / 2
         p = st["pop"]
         for i, (w, t) in enumerate(zip(g, texts)):
             wd = f.width(t, size)
@@ -332,7 +373,8 @@ def render_clip(src: Path, out_dir: Path, name: str, clip: dict, words: list, sr
         layout = "crop"     # no webcam found: the game fills the screen, which is still the right shape
     hook_y = _hook_y(layout, hook_y, face, width)
     ass = build_ass(words if clip.get("captions", True) else [], start, end, clip.get("hook", ""), clip.get("style", "bounce"),
-                    clip.get("highlight_words", []), hook_y, cap_y, width, height)
+                    clip.get("highlight_words", []), hook_y, cap_y, width, height,
+                    clip.get("hook_position"), clip.get("caption_position"))
     # Keep FFmpeg's ASS/font working directory short. This avoids Windows' 260-character path limit.
     work = Path(tempfile.mkdtemp(prefix="pk"))
     try:

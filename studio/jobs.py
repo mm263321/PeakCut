@@ -399,6 +399,9 @@ def request_render(jid, cid, changes: dict):
     for k in ("hook", "title", "description", "style", "layout"):
         if k in changes:
             new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000}.get(k, 20)]
+    for k in ("hook_position", "caption_position"):
+        if k in changes:
+            new[k] = render.clean_position(changes[k])
     if any(k in changes for k in export_settings.DEFAULTS):
         new.update(export_settings.clean({**new, **changes}))
     if new.get("layout") == "custom":
