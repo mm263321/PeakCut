@@ -55,7 +55,7 @@ check("AV1 keeps AV1 while falling back from NVENC to SVT-AV1",
 check("unsupported codec has no silent H.264 fallback",
       export_settings.encoder_candidates("av1", "high", {"libx264"}) == [])
 
-for quality, expected_crf in (("balanced", "23"), ("high", "20"), ("maximum", "17")):
+for quality, expected_crf in (("balanced", "21"), ("high", "18"), ("maximum", "16")):
     candidates = export_settings.encoder_candidates("h264", quality, {"libx264"})
     args = candidates[0][1]
     check(quality + " profile applies its software quality setting",
