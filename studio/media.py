@@ -299,6 +299,24 @@ def find_offset(full: np.ndarray, part: np.ndarray, expected: float, search=20.0
     return (a0 + int(np.argmax(corr))) / 16000
 
 
+def frame_jpeg(path: Path, second: float, width: int = 320) -> bytes:
+    """Return one small JPEG frame at a local source time, for the optional visual clip judge."""
+    path = Path(path)
+    if not path.is_file():
+        raise RuntimeError("The video frame source is no longer available.")
+    at = max(0.0, float(second))
+    width = max(160, min(640, int(width)))
+    cmd = ["ffmpeg", "-v", "error", "-ss", f"{at:.2f}", "-i", str(path), "-frames:v", "1",
+           "-vf", f"scale={width}:-2", "-q:v", "5", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"]
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=18, creationflags=NO_WINDOW)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError("Sampling a video frame took too long.") from e
+    if p.returncode != 0 or not p.stdout:
+        raise RuntimeError("FFmpeg could not read a frame from this part of the video.")
+    return p.stdout
+
+
 def probe(path: Path) -> dict:
     out = run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format", "-show_streams", str(path)])
     data = json.loads(out)

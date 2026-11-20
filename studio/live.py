@@ -505,9 +505,25 @@ class Session:
             self.last_spike = n
             self.spikes += 1
 
+    def _visual_frames(self, clip):
+        """Sample three frames from the rolling video segments for the optional visual judge."""
+        start, end = float(clip["start"]), float(clip["end"])
+        samples = [start + (end - start) * fraction for fraction in (0.22, 0.50, 0.78)]
+        with self.lock:
+            segments = list(self.segments)
+        frames = []
+        for second in samples:
+            segment = next((item for item in segments if item[1] <= second <= item[2] and item[0].is_file()), None)
+            if not segment:
+                continue
+            try:
+                frames.append(media.frame_jpeg(segment[0], max(0.0, second - segment[1]), width=320))
+            except Exception:  # noqa: BLE001 - a missing frame falls back to the two existing judges
+                continue
+        return frames
+
     def _ai_check(self, window=None, why=None):
-        """Judge 1 reads only the words. If it finds a moment, judge 2 reads only the loudness and chat activity
-        for the same stretch, without seeing the words. A clip is made when both say yes (or as set in Setup)."""
+        """Run the selected clipping method: the original words/reaction pair, or those two plus visual review."""
         st = self.settings
         every = int(st.get("ai_every_min", 3)) or 3
         if window:                    # just the stretch around a jump, or around someone saying "clip"
@@ -559,12 +575,16 @@ class Session:
             sig = []
             self.job["ai"]["last_error"] = str(e)[-200:]
         added = 0
+        advanced = self.settings.get("clip_method", "peakcut") == "advanced"
+        pending = []
+        force_used = False
         for c in keep:
             match = [m for m in sig if m["end"] >= c["start"] - 10 and m["start"] <= c["end"] + 10 and m["score"] >= 50]
             rs = max((m["score"] for m in match), default=0)
             verdict["reaction"] = rs
             both = bool(match)
-            ok = both or (st["decide_mode"] == "either" and c["score"] >= 90) or (must and added == 0)
+            forced = bool(must and not force_used)
+            ok = both or (st["decide_mode"] == "either" and c["score"] >= 90) or forced
             if not ok:
                 self.rejected += 1
                 self._verdict(verdict, "Reaction judge said no, not clipped")
@@ -572,16 +592,72 @@ class Session:
             if any(abs(c["start"] - k["start"]) < st["min_gap_min"] * 60 for k in self.job["clips"]):
                 self._verdict(verdict, "Too close to the last clip")
                 continue
-            why = "Both judges agreed" if both else ("Words judge was very sure" if c["score"] >= 90 and
-                                                     st["decide_mode"] == "either" else "Forced: no clip for a while")
-            c["judges"] = {"words": c["score"], "reaction": rs or None, "why": why}
-            c["reason"] = f"{c['reason']} ({why.lower()}.)"
+            why_text = "Both judges agreed" if both else ("Words judge was very sure" if c["score"] >= 90 and
+                                                          st["decide_mode"] == "either" else "Forced: no clip for a while")
+            if forced:
+                force_used = True
+            if advanced:
+                c["visual_id"] = f"live{len(pending) + 1:02d}"
+                pending.append((c, rs, why_text, forced))
+                continue
+            c["judges"] = {"words": c["score"], "reaction": rs or None, "why": why_text}
+            c["reason"] = f"{c['reason']} ({why_text.lower()}.)"
             self._add_clip(c)
-            self._verdict(verdict, "Clipped: " + why.lower())
+            self._verdict(verdict, "Clipped: " + why_text.lower())
             added += 1
-            must = False
             if added >= (1 if every <= 2 else 2):
                 break
+
+        if advanced and pending:
+            frames = {c["visual_id"]: self._visual_frames(c) for c, _rs, _why, _forced in pending}
+            visual = brain.judge_visual([c for c, _rs, _why, _forced in pending], frames,
+                                        title, up, game=self._game(), timeout=config.LIVE_AI_TIMEOUT)
+            self.checks += 1
+            self.tokens += int(visual.get("tokens", 0))
+            if not visual.get("available"):
+                self.job["ai"]["last_error"] = visual.get("reason") or "Visual analysis was unavailable."
+                self._verdict(verdict, "Visual judge unavailable; used PeakCut Automatic for this check")
+                for c, rs, why_text, _forced in pending:
+                    c.pop("visual_id", None)
+                    c["judges"] = {"words": c["score"], "reaction": rs or None, "why": why_text + " · visual fallback"}
+                    self._add_clip(c)
+                    self._verdict(verdict, "Clipped: " + why_text.lower() + " (visual fallback)")
+                    added += 1
+                    if added >= (1 if every <= 2 else 2):
+                        break
+            else:
+                scores = visual.get("scores", {})
+                for c, rs, why_text, forced in pending:
+                    visual_score = scores.get(c.get("visual_id"))
+                    word_score = int(c["score"])
+                    if visual_score is None:
+                        # If one candidate has no usable frames, preserve the original two-judge decision for it.
+                        c.pop("visual_id", None)
+                        c["judges"] = {"words": word_score, "reaction": rs or None, "visual": None,
+                                       "why": why_text + " · visual frames unavailable"}
+                        self._add_clip(c)
+                        self._verdict(dict(verdict, visual=None), "Clipped: visual frames unavailable; used PeakCut Automatic")
+                        added += 1
+                        if added >= (1 if every <= 2 else 2):
+                            break
+                        continue
+                    if visual_score < 45 and not forced:
+                        self.rejected += 1
+                        self._verdict(dict(verdict, visual=visual_score), "Visual judge said no, not clipped")
+                        continue
+                    combined = round(word_score * 0.55 + rs * 0.15 + visual_score * 0.30) if rs else round(word_score * 0.65 + visual_score * 0.35)
+                    c["visual_score"] = int(visual_score)
+                    c["visual_reason"] = visual.get("reasons", {}).get(c.get("visual_id"), "")
+                    c["score"] = combined
+                    c.pop("visual_id", None)
+                    c["judges"] = {"words": word_score, "reaction": rs or None, "visual": int(visual_score),
+                                   "combined": combined, "why": why_text + " + visual judge"}
+                    c["reason"] = f"{c['reason']} (visual judge: {visual_score}/100.)"
+                    self._add_clip(c)
+                    self._verdict(dict(verdict, visual=visual_score), "Clipped: three-judge decision")
+                    added += 1
+                    if added >= (1 if every <= 2 else 2):
+                        break
 
     def _verdict(self, v, result):
         self.verdicts.append(dict(v, result=result))

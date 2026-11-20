@@ -1386,6 +1386,7 @@ function drawAdd(variant) {
     </div>
     <div class="composer-opts" inert><div class="og">
       ${langSeg(c?.lang || "en")}
+      <div class="ob"><label class="f">Clipping method<select id="o_clip_method">${opts({peakcut:"PeakCut Automatic (default)", advanced:"Advanced AI · Visual Judge"}, c?.clip_method || "peakcut")}</select><small class="hint">Advanced AI checks sampled video frames as well as the existing speech and reaction signals. It uses extra AI image requests and needs a vision-capable model. If image analysis is unavailable, PeakCut Automatic is used for that check.</small></label></div>
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
         ${stepper("o_max", "How many", c?.max_clips ?? 6, 1, 20, 1, "")}
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
@@ -1509,7 +1510,7 @@ document.addEventListener("keydown", e => {
 const targetCreator = () => creatorId() || $("#o_creator")?.value || "";
 function jobOptions() {
   const n = id => { const v = $(id).value; return v === "" ? null : Number(v); };
-  const o = {max_clips:n("#o_max"), min_len:n("#o_min"), max_len:n("#o_maxlen"), captions:$("#o_captions").checked, style:$("#o_style").value, layout:$("#o_layout").value, quality:n("#o_quality"),
+  const o = {max_clips:n("#o_max"), min_len:n("#o_min"), max_len:n("#o_maxlen"), captions:$("#o_captions").checked, clip_method:$("#o_clip_method").value, style:$("#o_style").value, layout:$("#o_layout").value, quality:n("#o_quality"),
     export_resolution:$("#o_export_resolution").value, export_encoder:$("#o_export_encoder").value, export_quality:$("#o_export_quality").value,
     hook_text:$("#o_hook").value.trim(), description_text:$("#o_desc").value.trim(), lang:$("#o_lang")?.value || "en"};
   if (n("#o_from") !== null) o.range_start = n("#o_from") * 60;
@@ -1926,8 +1927,9 @@ function drawCreatorForm() {
       <div class="chans">${channelRows(c)}</div>
       <div class="fields" style="margin-top:14px"><label class="sw span"><input type="checkbox" data-k="auto_watch" ${c.auto_watch ? "checked" : ""}><span>Record automatically when they go live<small>Checks straight away, then every two minutes.</small></span></label>
         <label class="f">Language they speak<select data-k="lang">${opts(Object.fromEntries(Object.keys(speechLangs()).map(k => [k, langName(k)])), c.lang || "en")}</select><small class="sub" style="font-weight:400">Used for live recordings and as the choice for their videos.${(c.lang && c.lang !== "en" && speechLangs()[c.lang]?.state !== "ready") ? " Its speech model isn't added yet: see Settings → Speech models." : ""}</small></label></div></div>
-    <div class="card"><h2>How the AI decides</h2><p class="help">Two separate AI checks. The words judge reads only what was said. The reaction judge sees only how loud the streamer got and how busy chat was, never the words.</p>
+    <div class="card"><h2>How the AI decides</h2><p class="help">PeakCut Automatic uses two separate checks: spoken words, and reaction signals from loudness and chat. Advanced AI adds a third judge that inspects sampled video frames without seeing the transcript.</p>
       <div class="fields">
+        <label class="f">Clipping method<select data-k="clip_method">${opts({peakcut:"PeakCut Automatic (default)", advanced:"Advanced AI · Visual Judge"}, c.clip_method || "peakcut")}</select><small class="sub" style="font-weight:400">PeakCut Automatic keeps the existing two-judge system. Advanced AI adds a visual judge that inspects sampled frames; it uses extra AI image requests and needs a vision-capable model.</small></label>
         <label class="f">Check the live stream every<select data-k="ai_every_min">${opts({1:"1 minute", 2:"2 minutes", 3:"3 minutes", 5:"5 minutes", 10:"10 minutes"}, c.ai_every_min || 3)}</select><small class="sub" id="costhint" style="font-weight:400">${costHint(c.ai_every_min)}</small></label>
         <p class="help span" style="margin:0">On top of that, the AI always looks straight away when the stream suddenly gets louder or chat gets busier, and when someone says "clip" or "clip it".</p>
         <label class="f">Most live clips per hour<input data-k="live_per_hour" type="number" min="1" max="60" value="${c.live_per_hour}"></label>

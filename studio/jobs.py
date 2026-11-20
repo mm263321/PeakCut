@@ -108,7 +108,8 @@ _by_user: dict = {}                       # user -> {job id: job}: listing one p
 _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
-DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160, **export_settings.DEFAULTS,
+DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160,
+            "clip_method": "peakcut", **export_settings.DEFAULTS,
             "range_start": None, "range_end": None, "captions": True, "hook_text": "", "description_text": "",
             "lang": "en"}   # lang: the language spoken
 
@@ -136,6 +137,8 @@ def clean_options(options) -> dict:
         elif k in export_settings.DEFAULTS:
             out[k] = export_settings.clean({k: v})[k]
             continue
+        elif k == "clip_method":
+            v = v if v in ("peakcut", "advanced") else DEFAULTS["clip_method"]
         elif k == "style":
             v = v if v in render.STYLES else DEFAULTS["style"]
         elif k == "layout":
@@ -319,7 +322,7 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
     if c:
         d = creators.root(c["id"]) / ("live" if kind == "live" else "videos") / jid
         base = {**DEFAULTS, **{k: c[k] for k in (
-                    "max_clips", "min_len", "max_len", "style", "layout", "captions", "lang",
+                    "max_clips", "min_len", "max_len", "style", "layout", "captions", "lang", "clip_method",
                     "export_resolution", "export_encoder", "export_quality",
                 ) if k in c},
                 "hook_text": creators.clean_hook(c.get("hook_text")),
@@ -752,13 +755,82 @@ def _run_job(job):
                 vstate["path"] = path
             return vstate["path"]
 
+    def review_visual(candidates, shift):
+        """Optional third judge. Sample candidate video frames without changing the classic path."""
+        if not candidates or o.get("clip_method", "peakcut") != "advanced":
+            return candidates, 0, False
+        frames = {}
+        for index, clip in enumerate(candidates, start=len(job["clips"]) + 1):
+            clip.update(id=clip.get("id") or f"clip{index:02d}",
+                        start=round(clip["start"] + shift, 2), end=round(clip["end"] + shift, 2))
+        shared_source = None
+        if src["type"] != "url" or not pieces:
+            raw = job.get("source_path")
+            if not raw:
+                raw = whole_video()
+            if raw:
+                shared_source = Path(raw)
+        for clip in candidates[:8]:
+            source_path, offset = shared_source, 0.0
+            if src["type"] == "url" and pieces:
+                _fetch_piece(job, clip, audio)
+                if clip.get("status") == "error" or not clip.get("src"):
+                    continue
+                source_path = Path(clip["src"])
+                offset = float(clip.get("src_offset") or 0.0)
+            if not source_path or not source_path.is_file():
+                continue
+            start_at, end_at = float(clip["start"]), float(clip["end"])
+            samples = [start_at + (end_at - start_at) * fraction for fraction in (0.22, 0.50, 0.78)]
+            got = []
+            for second in samples:
+                try:
+                    got.append(media.frame_jpeg(source_path, max(0.0, second - offset), width=320))
+                except Exception:  # noqa: BLE001 - an unavailable frame must not stop ordinary clipping
+                    continue
+            if got:
+                frames[clip["id"]] = got
+        result = brain.judge_visual(candidates, frames, job.get("title", ""), job.get("uploader", ""),
+                                    game=game, timeout=120)
+        if not result.get("available"):
+            notes.append("Visual judge unavailable; this block used PeakCut Automatic decisions.")
+            return candidates, int(result.get("tokens", 0)), False
+        scores = result.get("scores", {})
+        kept = []
+        for clip in candidates:
+            visual_score = scores.get(clip["id"])
+            word_score = int(clip.get("score", 0))
+            if visual_score is None:
+                # A single unreadable frame must not discard an otherwise good transcript candidate.
+                clip["visual_score"] = None
+                clip["visual_reason"] = "Frames unavailable; kept using the existing transcript judge."
+                clip["judges"] = {"words": word_score, "visual": None, "combined": word_score}
+                kept.append(clip)
+                notes.append(f"Visual frames unavailable at {round(clip['start'])}s; kept the existing AI selection.")
+                continue
+            if visual_score < 42:
+                if clip.get("src"):
+                    Path(clip["src"]).unlink(missing_ok=True)
+                    clip.pop("src", None)
+                notes.append(f"Visual judge passed on the moment at {round(clip['start'])}s.")
+                continue
+            clip["visual_score"] = int(visual_score)
+            clip["visual_reason"] = result.get("reasons", {}).get(clip["id"], "")
+            clip["judges"] = {"words": word_score, "visual": int(visual_score),
+                              "combined": round(word_score * 0.65 + visual_score * 0.35)}
+            clip["score"] = clip["judges"]["combined"]
+            clip["reason"] = f"{clip.get('reason', '').strip()} (visual judge: {int(visual_score)}/100).".strip()
+            kept.append(clip)
+        kept.sort(key=lambda item: item.get("score", 0), reverse=True)
+        return kept, int(result.get("tokens", 0)), True
+
     exact = {}      # clip id -> (from, to, words): our own model's words for just that clip
 
     began = {}      # clip id -> when work on it started
 
     def make(clip, words_now):
         began[clip["id"]] = time.time()
-        if src["type"] == "url" and (pieces or not whole_video()):
+        if src["type"] == "url" and not clip.get("src") and (pieces or not whole_video()):
             _fetch_piece(job, clip, audio)
         if clip["status"] != "error" and clip.get("captions", True) and yt_model:
             # The clip was found with YouTube's transcript. What is shown on screen comes from our own model,
@@ -860,8 +932,9 @@ def _run_job(job):
             continue
         quota = max(1, math.ceil(left / (len(blocks) - bi)))
         s0 = int((a - lo) / 16000)
+        candidate_limit = min(8, max(quota, quota * 2)) if o.get("clip_method", "peakcut") == "advanced" else quota
         found, ai = brain.find_clips(bw, db[s0: s0 + int((b - a) / 16000) + 1], (b - a) / 16000, job["title"],
-                                     job["uploader"], quota, int(o["min_len"]), int(o["max_len"]), notes.append, game=game)
+                                     job["uploader"], candidate_limit, int(o["min_len"]), int(o["max_len"]), notes.append, game=game)
         tokens += ai.get("tokens", 0)
         model = ai.get("model") or model
         if ai.get("note"):
@@ -878,9 +951,16 @@ def _run_job(job):
                 else:
                     keep.append(c)
             found = keep
+        if found:
+            if o.get("clip_method", "peakcut") == "advanced":
+                found, visual_tokens, _visual_used = review_visual(found, shift)
+                tokens += visual_tokens
+                found = found[:quota]
+            else:
+                for c in found:
+                    c["start"], c["end"] = round(c["start"] + shift, 2), round(c["end"] + shift, 2)
         for c in found:
-            c.update(id=f"clip{len(job['clips']) + 1:02d}", start=round(c["start"] + shift, 2),
-                     end=round(c["end"] + shift, 2), style=o["style"], layout=o["layout"],
+            c.update(id=c.get("id") or f"clip{len(job['clips']) + 1:02d}", style=o["style"], layout=o["layout"],
                      captions=o.get("captions", True), status="queued", version=0,
                      **export_settings.clean(o))
             if o.get("hook_text"):        # the person's own big text, on every clip, in place of the AI's
