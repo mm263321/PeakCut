@@ -72,7 +72,7 @@ def fake_open(url, timeout=None):
 
 # ---- the list of models, and where Arabic comes from
 check("English, Arabic and Hinglish are known (no separate Hindi option)", sorted(fetch_model.MODELS), ["ar", "en", "hinglish"])
-check("Hinglish uses the pinned Swift ONNX export", all("/resolve/9721eb7/" in fetch_model.file_url("hinglish", n)
+check("Hinglish uses the pinned Swift ONNX export", all("/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/" in fetch_model.file_url("hinglish", n)
       for n in fetch_model.DIRECT_FILES["hinglish"]), True)
 check("Hinglish downloads only the two ONNX graphs and tokenizer",
       fetch_model.DIRECT_FILES["hinglish"], ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"))

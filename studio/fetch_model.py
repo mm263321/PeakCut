@@ -1,8 +1,8 @@
 """The speech-to-text models, one per spoken language, each downloaded once.
 
-English comes first and by itself, the first time it is needed (about 480 MB). The others are only downloaded when
-someone asks for them, from Settings -> Speech models or when adding a video in that language. To add a language,
-add a row to MODELS: any NVIDIA NeMo transducer model exported for sherpa-onnx works the same way.
+English comes first and by itself, the first time it is needed (about 480 MB). Other models are downloaded only
+when someone asks for them, from Settings -> Speech models or when adding a video in that language. Models may
+use different sherpa-onnx families (such as NeMo transducer or Whisper), selected by their language entry.
 
 A model is unpacked next to where it will live and moved into place only when it is whole, so a download that was
 cut off can never leave half a model behind. When a model's fingerprint (SHA-256) is known, the downloaded file is
@@ -19,7 +19,7 @@ from . import config, safe
 
 _SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 _HINGLISH_REPO = "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx"
-_HINGLISH_REV = "9721eb7"  # pinned repository revision; the model files must not silently change
+_HINGLISH_REV = "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a"  # pinned repository revision; the model files must not silently change
 DIRECT_FILES = {
     "hinglish": ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
 }
