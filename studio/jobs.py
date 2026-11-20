@@ -318,7 +318,10 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
     c = creators.get(creator) if creator else None
     if c:
         d = creators.root(c["id"]) / ("live" if kind == "live" else "videos") / jid
-        base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout", "captions", "lang") if k in c},
+        base = {**DEFAULTS, **{k: c[k] for k in (
+                    "max_clips", "min_len", "max_len", "style", "layout", "captions", "lang",
+                    "export_resolution", "export_encoder", "export_quality",
+                ) if k in c},
                 "hook_text": creators.clean_hook(c.get("hook_text")),
                 "description_text": creators.clean_description(c.get("description_text"))}
     else:
@@ -463,6 +466,13 @@ def _f(v):
         return -1.0
 
 
+def clip_export_settings(job, clip) -> dict:
+    """Creator/job defaults with an individual clip's explicit choices taking precedence."""
+    selected = dict(job.get("options") or {})
+    selected.update(clip or {})
+    return export_settings.clean(selected)
+
+
 def render_one(job, clip, words):
     d = Path(job["dir"])
     clip["status"] = "rendering"
@@ -476,10 +486,8 @@ def render_one(job, clip, words):
             clip["end"] = min(clip["end"], job["duration"])
         local = dict(clip, start=clip["start"] - off, end=clip["end"] - off, hook=roman.to_roman(clip.get("hook") or ""))
         near = _caption_words(job, clip, words, off) if clip.get("captions", True) else []
-        # Each clip can override its job's export defaults. Creator-specific defaults are added in a later phase.
-        selected_export = dict(job.get("options") or {})
-        selected_export.update(clip)
-        local.update(export_settings.clean(selected_export))
+        # Export precedence: creator settings flow into the job; a clip's saved settings override them.
+        local.update(clip_export_settings(job, clip))
         out = render.render_clip(src, d / "clips", clip["id"], local, near, job["width"], job["height"])
         clip.update(out, status="done", version=clip.get("version", 0) + 1, error=None)
         post = {k: clip[k] for k in ("title", "description", "hashtags", "hook", "start", "end", "score")}
