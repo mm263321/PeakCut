@@ -4,7 +4,7 @@ graphics card. The main PeakCut server sends it pieces and gets the words back (
 Run with:  python -m studio.asr_worker
 Settings:  PEAKCUT_ASR_PROVIDER=cuda, PEAKCUT_ASR_TOKEN=<shared secret>, PEAKCUT_ASR_PORT (9000),
            PEAKCUT_ASR_BATCH (pieces decoded together on the card, default 16),
-           PEAKCUT_ASR_LANGS (the spoken languages it has models for, e.g. "en,ar,hinglish"; default "en")
+           PEAKCUT_ASR_LANGS (the spoken languages it has models for, e.g. "en,ar,hinglish,hinglish_apex,hinglish_prime"; default "en")
 
 It holds nothing: no accounts, no files, no database. It only answers on the private network, and only to callers
 that know the shared secret."""

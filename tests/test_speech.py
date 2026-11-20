@@ -52,7 +52,10 @@ def archive(name):
 
 
 ARCHIVES = {k: archive(m[1]) for k, m in fetch_model.MODELS.items() if k not in fetch_model.DIRECT_FILES}
-DIRECT_URLS = {fetch_model.file_url("hinglish", name): name for name in fetch_model.DIRECT_FILES["hinglish"]}
+DIRECT_URLS = {fetch_model.file_url(lang, name): (lang, name)
+               for lang, files in fetch_model.DIRECT_FILES.items() for name in files}
+DIRECT_PAYLOADS = {(lang, name): ("test-model-" + lang + "-" + name).encode()
+                   for lang, files in fetch_model.DIRECT_FILES.items() for name in files}
 tampered = set()      # languages whose download is swapped for a different file
 
 
@@ -65,17 +68,27 @@ class Answer(io.BytesIO):
 def fake_open(url, timeout=None):
     downloads.append(url)
     if url in DIRECT_URLS:
-        return Answer(("test-model-" + DIRECT_URLS[url]).encode())
+        lang, filename = DIRECT_URLS[url]
+        data = DIRECT_PAYLOADS[(lang, filename)]
+        return Answer(data + (b"changed" if lang in tampered else b""))
     lang = next(k for k, m in fetch_model.MODELS.items() if m[2] == url)
     return Answer(ARCHIVES[lang] + (b"changed" if lang in tampered else b""))
 
 
 # ---- the list of models, and where Arabic comes from
-check("English, Arabic and Hinglish are known (no separate Hindi option)", sorted(fetch_model.MODELS), ["ar", "en", "hinglish"])
-check("Hinglish uses the pinned Swift ONNX export", all("/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/" in fetch_model.file_url("hinglish", n)
-      for n in fetch_model.DIRECT_FILES["hinglish"]), True)
-check("Hinglish downloads only the two ONNX graphs and tokenizer",
-      fetch_model.DIRECT_FILES["hinglish"], ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"))
+check("English, Arabic and three Hinglish models are known (no Hindi option)",
+      sorted(fetch_model.MODELS), ["ar", "en", "hinglish", "hinglish_apex", "hinglish_prime"])
+for code, directory in (("hinglish", "hi-hinglish-swift"), ("hinglish_apex", "hi-hinglish-apex")):
+    check(code + " uses its pinned Sherpa ONNX export",
+          all(f"/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/{directory}/" in fetch_model.file_url(code, n)
+              for n in fetch_model.DIRECT_FILES[code]), True)
+check("Apex needs its two ONNX graphs and tokenizer",
+      fetch_model.DIRECT_FILES["hinglish_apex"], ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"))
+prime_file = fetch_model.DIRECT_FILES["hinglish_prime"][0]
+check("Prime uses its pinned GGML Q8 export and known SHA-256",
+      ("/resolve/a0c23ffdae030007639da02059256ce4eb1669e8/" in fetch_model.file_url("hinglish_prime", prime_file),
+       fetch_model.DIRECT_HASHES["hinglish_prime"][prime_file]),
+      (True, "e42f78e509920efc64d99f4ae2b0b39fe59b8f8f37c8bfe41fa6e8607525a2a7"))
 check("Arabic is downloaded from its own address, not English's", fetch_model.MODELS["ar"][2] != fetch_model.MODELS["en"][2], True)
 check("Arabic's address names one fixed version of the file, not the latest",
       fetch_model.MODELS["ar"][2], lambda u: "/resolve/main/" not in u and re.search(r"/resolve/[0-9a-f]{40}/", u))
@@ -91,8 +104,8 @@ fetch_model.MODELS["ar"] = real_ar[:5] + (hashlib.sha256(ARCHIVES["ar"]).hexdige
 fetch_model.urllib.request.urlopen = fake_open
 check("each language has its own folder", fetch_model.folder("ar") != fetch_model.folder("en"), True)
 check("nothing is here to begin with",
-      (fetch_model.status("en"), fetch_model.status("ar"), fetch_model.status("hinglish")),
-      ("missing", "missing", "missing"))
+      tuple(fetch_model.status(k) for k in ("en", "ar", "hinglish", "hinglish_apex", "hinglish_prime")),
+      ("missing", "missing", "missing", "missing", "missing"))
 
 # ---- Arabic is never downloaded unless someone asks
 try:
@@ -110,9 +123,10 @@ check("...and so does loading the model for transcribing", ("Speech models" in s
 
 # ---- the routes: list, download, remove
 r = c.get("/api/speech").json()["models"]
-check("the page lists English, Arabic and Hinglish with their sizes",
+check("the page lists English, Arabic and all three Hinglish variants",
       [(m["lang"], m["state"], m["size_mb"] > 0) for m in r],
-      [("en", "missing", True), ("ar", "missing", True), ("hinglish", "missing", True)])
+      [("en", "missing", True), ("ar", "missing", True), ("hinglish", "missing", True),
+       ("hinglish_apex", "missing", True), ("hinglish_prime", "missing", True)])
 check("an unknown language is refused", c.post("/api/speech/xx", headers=ORIGIN).status_code, 400)
 check("another website cannot start a download", c.post("/api/speech/ar", headers={"Origin": "https://evil.example"}).status_code, 403)
 check("...and nothing was downloaded", downloads, [])
@@ -178,9 +192,9 @@ try:
     whisper_config = transcribe._new("hinglish")
 finally:
     transcribe._sherpa = old_sherpa
-check("Hinglish uses Whisper with Roman-script English token and word timestamps",
+check("Hinglish Swift uses the Hindi Whisper token and word timestamps",
       (whisper_config["language"], whisper_config["task"], whisper_config["enable_token_timestamps"]),
-      ("en", "transcribe", True))
+      ("hi", "transcribe", True))
 whisper_words = transcribe._words(["Hello", " there", "!", " how", " are", " you"],
                                   [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], 0, 32000)
 check("Whisper's space-prefixed pieces become correctly separated words",
@@ -195,13 +209,128 @@ check("Hinglish can be removed and its files are deleted",
       (c.delete("/api/speech/hinglish", headers=ORIGIN).status_code, fetch_model.folder("hinglish").exists()),
       (200, False))
 
+# ---- Hinglish Apex download, Sherpa loader and removal
+downloads.clear()
+check("the owner can start the Hinglish Apex download",
+      c.post("/api/speech/hinglish_apex", headers=ORIGIN).status_code, 200)
+for _ in range(100):
+    if fetch_model.status("hinglish_apex") == "ready":
+        break
+    time.sleep(0.05)
+check("Hinglish Apex arrives with all required files",
+      (fetch_model.ready("hinglish_apex"), sorted(p.name for p in fetch_model.folder("hinglish_apex").iterdir())),
+      (True, sorted(fetch_model.DIRECT_FILES["hinglish_apex"])))
+apex_folder = fetch_model.folder("hinglish_apex")
+for filename in fetch_model.DIRECT_FILES["hinglish_apex"]:
+    (apex_folder / filename).write_bytes(b"test-model")
+old_sherpa = transcribe._sherpa
+transcribe._sherpa = lambda: FakeSherpa
+try:
+    apex_config = transcribe._new("hinglish_apex")
+finally:
+    transcribe._sherpa = old_sherpa
+check("Apex uses the Hindi Whisper token and word timestamp support",
+      (apex_config["language"], apex_config["task"], apex_config["enable_token_timestamps"]),
+      ("hi", "transcribe", True))
+transcribe._pool("hinglish_apex").made += 1
+check("Apex cannot be removed while it is in use",
+      (c.delete("/api/speech/hinglish_apex", headers=ORIGIN).status_code,
+       fetch_model.ready("hinglish_apex")), (409, True))
+transcribe._pool("hinglish_apex").made -= 1
+check("Apex can be removed when idle",
+      (c.delete("/api/speech/hinglish_apex", headers=ORIGIN).status_code,
+       fetch_model.folder("hinglish_apex").exists()), (200, False))
+
+# ---- Hinglish Prime download, SHA-256, whisper.cpp backend and removal
+prime_file = fetch_model.DIRECT_FILES["hinglish_prime"][0]
+fake_prime_data = DIRECT_PAYLOADS[("hinglish_prime", prime_file)]
+old_prime_hash = fetch_model.DIRECT_HASHES["hinglish_prime"][prime_file]
+fetch_model.DIRECT_HASHES["hinglish_prime"][prime_file] = hashlib.sha256(fake_prime_data).hexdigest()
+downloads.clear()
+check("the owner can start the Hinglish Prime download",
+      c.post("/api/speech/hinglish_prime", headers=ORIGIN).status_code, 200)
+for _ in range(100):
+    if fetch_model.status("hinglish_prime") == "ready":
+        break
+    time.sleep(0.05)
+check("Prime arrives with its GGML Q8 file",
+      (fetch_model.ready("hinglish_prime"),
+       (fetch_model.folder("hinglish_prime") / prime_file).read_bytes()),
+      (True, fake_prime_data))
+
+class FakePrimeModel:
+    def __init__(self, model, **kwargs):
+        self.model = model
+        self.options = kwargs
+    def transcribe(self, audio, **kwargs):
+        return [type("Segment", (), {"t0": 0, "t1": 50, "text": "Bhai"})(),
+                type("Segment", (), {"t0": 50, "t1": 100, "text": "what are you doing?"})()]
+
+fake_pkg = type(sys)("pywhispercpp")
+fake_pkg.__path__ = []
+fake_model_module = type(sys)("pywhispercpp.model")
+fake_model_module.Model = FakePrimeModel
+old_pkg = sys.modules.get("pywhispercpp")
+old_model_module = sys.modules.get("pywhispercpp.model")
+sys.modules["pywhispercpp"] = fake_pkg
+sys.modules["pywhispercpp.model"] = fake_model_module
+try:
+    prime_model = transcribe._new("hinglish_prime")
+finally:
+    if old_pkg is None:
+        sys.modules.pop("pywhispercpp", None)
+    else:
+        sys.modules["pywhispercpp"] = old_pkg
+    if old_model_module is None:
+        sys.modules.pop("pywhispercpp.model", None)
+    else:
+        sys.modules["pywhispercpp.model"] = old_model_module
+check("Prime selects Hindi with word split and timestamp settings",
+      (prime_model.model.endswith(prime_file), prime_model.options["language"],
+       prime_model.options["max_len"], prime_model.options["split_on_word"],
+       prime_model.options["token_timestamps"]),
+      (True, "hi", 1, True, True))
+prime_result = transcribe.decode_pieces(
+    [transcribe.np.zeros(16000, dtype="float32")], rec=prime_model, lang="hinglish_prime")
+prime_words = transcribe._words(prime_result[0][0], prime_result[0][1], 0, 16000)
+check("Prime converts word-split Whisper segments into caption words",
+      [w["w"] for w in prime_words], ["Bhai", "what", "are", "you", "doing?"])
+transcribe.unload("hinglish_prime")
+transcribe._pool("hinglish_prime").made += 1
+check("Prime cannot be removed while it is in use",
+      (c.delete("/api/speech/hinglish_prime", headers=ORIGIN).status_code,
+       fetch_model.ready("hinglish_prime")), (409, True))
+transcribe._pool("hinglish_prime").made -= 1
+check("Prime can be removed when idle",
+      (c.delete("/api/speech/hinglish_prime", headers=ORIGIN).status_code,
+       fetch_model.folder("hinglish_prime").exists()), (200, False))
+tampered.add("hinglish_prime")
+try:
+    fetch_model.ensure("hinglish_prime")
+    checksum_error = ""
+except RuntimeError as e:
+    checksum_error = str(e)
+check("a changed Prime GGML file fails SHA-256 and is not installed",
+      ("checksum did not match" in checksum_error, fetch_model.ready("hinglish_prime")),
+      (True, False))
+fetch_model.DIRECT_HASHES["hinglish_prime"][prime_file] = old_prime_hash
+tampered.clear()
+
 # ---- choosing the language
 check("a video can be marked as Arabic", jobs.clean_options({"lang": "ar"}), {"lang": "ar"})
-check("a video can be marked as Hinglish", jobs.clean_options({"lang": "hinglish"}), {"lang": "hinglish"})
+check("a video can be marked as Hinglish Swift", jobs.clean_options({"lang": "hinglish"}), {"lang": "hinglish"})
+check("a video can be marked as Hinglish Apex",
+      jobs.clean_options({"lang": "hinglish_apex"}), {"lang": "hinglish_apex"})
+check("a video can be marked as Hinglish Prime",
+      jobs.clean_options({"lang": "hinglish_prime"}), {"lang": "hinglish_prime"})
 check("an unknown language becomes English", jobs.clean_options({"lang": "xx"}), {"lang": "en"})
 check("videos are English unless chosen", jobs.DEFAULTS["lang"], "en")
 check("a creator can speak Arabic", creators._clean({"lang": "ar"}), {"lang": "ar"})
-check("a creator can speak Hinglish", creators._clean({"lang": "hinglish"}), {"lang": "hinglish"})
+check("a creator can speak Hinglish Swift", creators._clean({"lang": "hinglish"}), {"lang": "hinglish"})
+check("a creator can speak Hinglish Apex",
+      creators._clean({"lang": "hinglish_apex"}), {"lang": "hinglish_apex"})
+check("a creator can speak Hinglish Prime",
+      creators._clean({"lang": "hinglish_prime"}), {"lang": "hinglish_prime"})
 check("...but not a made-up language", creators._clean({"lang": "<b>"}), {"lang": "en"})
 r = c.post("/api/creators", json={"name": "Arabic speaker"}, headers=ORIGIN)
 cid = r.json()["id"]

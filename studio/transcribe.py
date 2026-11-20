@@ -164,19 +164,37 @@ def _load_sherpa():
 
 
 def _new(lang: str = fetch_model.DEFAULT):
-    sherpa_onnx = _sherpa()
     # English is downloaded here, once, if it was never fetched. Other languages are only ever downloaded when
     # someone asks for them; here we only wait for a download already running.
     fetch_model.ensure(lang, start=lang == fetch_model.DEFAULT)
     d = fetch_model.folder(lang)
-    if lang == "hinglish":
-        # This fine-tune writes Hindi-English mixed speech directly in Roman letters.
-        # Its training/export uses the English Whisper token; attention outputs provide word timing.
+    if lang == "hinglish_prime":
+        try:
+            from pywhispercpp.model import Model
+        except ImportError as e:
+            raise RuntimeError("Hinglish Prime needs the pywhispercpp runtime. Run "
+                               "python -m pip install -r requirements.txt and restart PeakCut.") from e
+        return Model(
+            str(d / fetch_model.DIRECT_FILES[lang][0]),
+            n_threads=THREADS,
+            language="hi",
+            no_context=True,
+            token_timestamps=True,
+            max_len=1,
+            split_on_word=True,
+            print_progress=False,
+            print_realtime=False,
+            print_timestamps=False,
+            redirect_whispercpp_logs_to=None,
+        )
+    sherpa_onnx = _sherpa()
+    if lang in ("hinglish", "hinglish_apex"):
+        # The fine-tunes write Romanized Hindi-English directly; their Whisper language token is Hindi.
         return sherpa_onnx.OfflineRecognizer.from_whisper(
             encoder=str(d / "encoder.int8.onnx"),
             decoder=str(d / "decoder.int8.onnx"),
             tokens=str(d / "tokens.txt"),
-            language="en",
+            language="hi",
             task="transcribe",
             num_threads=THREADS,
             decoding_method="greedy_search",
@@ -204,7 +222,9 @@ def _take(lang: str = fetch_model.DEFAULT, wait: bool = True):
     except queue.Empty:
         pass
     with _lock:
-        make = p.made < COPIES
+        # Prime is a larger checkpoint; keep one loaded instance to avoid multiplying RAM use.
+        limit = 1 if lang == "hinglish_prime" else COPIES
+        make = p.made < limit
         if make:
             p.made += 1
     if make:
@@ -286,19 +306,56 @@ def _words(tokens, timestamps, a: int, b: int) -> list:
     return out
 
 
+def _prime_tokens(segments, duration: float) -> tuple:
+    """Convert whisper.cpp word-split segments into PeakCut's token/time format."""
+    tokens, times = [], []
+    for segment in segments:
+        text = str(getattr(segment, "text", "") or "").strip()
+        words = re.findall(r"\S+", text)
+        if not words:
+            continue
+        # whisper.cpp timestamps are centiseconds (10 ms units).
+        start = max(0.0, float(segment.t0) / 100.0)
+        end = min(duration, max(start + 0.01, float(segment.t1) / 100.0))
+        weights = [max(1, len(word)) for word in words]
+        total = sum(weights)
+        used = 0
+        for word, weight in zip(words, weights):
+            tokens.append((" " if tokens else "") + word)
+            times.append(round(start + (end - start) * used / total, 3))
+            used += weight
+    return tokens, times
+
+
 def decode_pieces(pieces: list, rec=None, lang: str = fetch_model.DEFAULT) -> list:
     """[(tokens, timestamps), ...] for float32 pieces of audio, done on this machine with one copy of the model."""
-    streams = []
     rec = rec or _take(lang)       # held only for these pieces, so videos transcribing at once take turns fairly
     try:
+        if lang == "hinglish_prime":
+            out = []
+            for seg in pieces:
+                segments = rec.transcribe(
+                    seg.astype(np.float32, copy=False),
+                    language="hi",
+                    no_context=True,
+                    token_timestamps=True,
+                    max_len=1,
+                    split_on_word=True,
+                    print_progress=False,
+                    print_realtime=False,
+                    print_timestamps=False,
+                )
+                out.append(_prime_tokens(segments, len(seg) / 16000.0))
+            return out
+        streams = []
         for seg in pieces:
             st = rec.create_stream()
             st.accept_waveform(16000, seg)
             streams.append(st)
         rec.decode_streams(streams)
+        return [(list(st.result.tokens), [float(t) for t in st.result.timestamps]) for st in streams]
     finally:
         _give_back(rec, lang)
-    return [(list(st.result.tokens), [float(t) for t in st.result.timestamps]) for st in streams]
 
 
 class RemoteLacks(Exception):

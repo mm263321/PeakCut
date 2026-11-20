@@ -19,17 +19,36 @@ from . import config, safe
 
 _SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 _HINGLISH_REPO = "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx"
-_HINGLISH_REV = "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a"  # pinned repository revision; the model files must not silently change
+_HINGLISH_REV = "9721eb71eea141fae0982cfcdb9dd2e3d4953c4a"  # pinned export revision
+_PRIME_REPO = "https://huggingface.co/BuilderHelm/Whisper-Hindi2Hinglish-Prime-GGML"
+_PRIME_REV = "a0c23ffdae030007639da02059256ce4eb1669e8"  # pinned Q8 GGML weights
+
+# Language/model code -> files required by its speech engine.
 DIRECT_FILES = {
     "hinglish": ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
+    "hinglish_apex": ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
+    "hinglish_prime": ("ggml-hindi2hinglish-prime-q8_0.bin",),
+}
+DIRECT_SPECS = {
+    "hinglish": (_HINGLISH_REPO, _HINGLISH_REV, "hi-hinglish-swift"),
+    "hinglish_apex": (_HINGLISH_REPO, _HINGLISH_REV, "hi-hinglish-apex"),
+    "hinglish_prime": (_PRIME_REPO, _PRIME_REV, ""),
+}
+DIRECT_HASHES = {
+    "hinglish_prime": {
+        "ggml-hindi2hinglish-prime-q8_0.bin":
+            "e42f78e509920efc64d99f4ae2b0b39fe59b8f8f37c8bfe41fa6e8607525a2a7",
+    },
 }
 
 
 def file_url(lang: str, filename: str) -> str:
-    """URL for a file in a model published as separate files rather than one archive."""
+    """URL for one pinned file in a model published as separate files."""
     if lang not in DIRECT_FILES or filename not in DIRECT_FILES[lang]:
         raise ValueError("Unknown speech model file.")
-    return f"{_HINGLISH_REPO}/resolve/{_HINGLISH_REV}/hi-hinglish-swift/{filename}"
+    repo, revision, directory = DIRECT_SPECS[lang]
+    base = f"{repo}/resolve/{revision}/"
+    return base + (f"{directory}/" if directory else "") + filename
 
 # language -> (name shown on the pages, the model's folder name, where it is downloaded from, size in MB, credit,
 #              the archive's SHA-256 fingerprint, or "" when it is not checked)
@@ -39,8 +58,12 @@ MODELS = {
            "Parakeet TDT 0.6b v2 by NVIDIA (CC-BY-4.0)", ""),
     "ar": ("Arabic", config.ASR_MODEL_AR, config.ASR_MODEL_AR_URL, 107,
            "FastConformer Arabic by NVIDIA (CC-BY-4.0)", config.ASR_MODEL_AR_SHA256),
-    "hinglish": ("Hinglish", "sherpa-onnx-hi-hinglish-swift", "", 160,
-                 "Whisper Hindi2Hinglish Swift by Oriserve (Apache-2.0)", ""),
+    "hinglish": ("Hinglish Swift", "sherpa-onnx-hi-hinglish-swift", "", 150,
+                 "Whisper Hindi2Hinglish Swift · Oriserve (Apache-2.0)", ""),
+    "hinglish_apex": ("Hinglish Apex", "sherpa-onnx-hi-hinglish-apex", "", 1000,
+                      "Whisper Hindi2Hinglish Apex · Oriserve (Apache-2.0)", ""),
+    "hinglish_prime": ("Hinglish Prime", "whisper-hindi2hinglish-prime-q8", "", 1660,
+                       "Whisper Hindi2Hinglish Prime Q8 · Oriserve / whisper.cpp (Apache-2.0 / MIT)", ""),
 }
 DEFAULT = "en"
 WAIT = 60   # seconds of silence from the connection before giving up, so a stalled download cannot hang everything
@@ -142,12 +165,20 @@ def _fetch_direct(lang: str) -> None:
                     raise OSError(f"{filename} was incomplete ({received} of {total} bytes).")
             if not received:
                 raise OSError(f"{filename} was empty.")
+            expected = DIRECT_HASHES.get(lang, {}).get(filename)
+            actual = digest.hexdigest()
+            if expected and actual.lower() != expected.lower():
+                raise WrongFile(f"{filename} SHA-256 is {actual}; expected {expected}.")
         if not all((part / name).is_file() and (part / name).stat().st_size > 0 for name in files):
             raise OSError("The download did not contain all required model files.")
         shutil.rmtree(folder(lang), ignore_errors=True)
         part.rename(folder(lang))
         st.update(percent=100, error="")
         print(f"  {label(lang)} speech model ready.\n", flush=True)
+    except WrongFile as e:
+        st["error"] = f"The downloaded model did not match its expected SHA-256: {e}"
+        raise RuntimeError(f"PeakCut refused the {label(lang)} model because its checksum did not match. "
+                           "Nothing was installed. Try the download again later.") from e
     except Exception as e:  # noqa: BLE001
         st["error"] = safe.friendly(e, 200)
         raise RuntimeError(f"PeakCut couldn't download its {label(lang)} speech model (about {size} MB, needed once). "
