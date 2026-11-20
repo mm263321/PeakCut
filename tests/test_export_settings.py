@@ -6,7 +6,7 @@ import tempfile
 os.environ["PEAKCUT_DATA"] = tempfile.mkdtemp(prefix="pc-export-settings-")
 sys.path.insert(0, ".")
 
-from studio import export_settings  # noqa: E402
+from studio import export_settings, media, render  # noqa: E402
 
 fails = []
 
@@ -58,6 +58,37 @@ for quality, expected_crf in (("balanced", "23"), ("high", "20"), ("maximum", "1
     args = candidates[0][1]
     check(quality + " profile applies its software quality setting",
           "-crf" in args and args[args.index("-crf") + 1] == expected_crf)
+
+# Make short real MP4s at every requested size. This checks that the composition and
+# captions use the selected dimensions, not a 1080p render enlarged afterward.
+work = Path(tempfile.mkdtemp(prefix="pc-export-render-"))
+source = work / "source.mp4"
+try:
+    import subprocess
+    from pathlib import Path
+
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=1.2",
+         "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1.2", "-shortest",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(source)],
+        check=True, capture_output=True, timeout=60,
+    )
+    source_info = media.probe(source)
+    expected_encoders = {"1080p": (1080, 1920), "2k": (1440, 2560), "4k": (2160, 3840)}
+    for resolution, (width, height) in expected_encoders.items():
+        clip = {
+            "start": 0, "end": 1.2, "layout": "blur", "captions": False, "hook": "",
+            "export_resolution": resolution, "export_encoder": "h264", "export_quality": "balanced",
+        }
+        made = render.render_clip(source, work / resolution, resolution, clip, [], source_info["width"], source_info["height"])
+        encoded = media.probe(work / resolution / made["file"])
+        check(resolution + " render uses native selected dimensions",
+              encoded["width"] == width and encoded["height"] == height)
+        check(resolution + " render records the actual encoder",
+              bool(made.get("encoder")) and made.get("resolution") == f"{width}x{height}")
+except Exception as error:  # noqa: BLE001
+    print("  Real export test: " + str(error))
+    fails.append("real 1080p/2K/4K exports")
 
 if fails:
     print("FAILED: " + ", ".join(fails))
