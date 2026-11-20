@@ -624,6 +624,21 @@ dialog::backdrop{background:rgba(14,12,11,.42);animation:fadein .16s ease}
 .pc-pos-caption{color:#fff;font-size:12px;font-weight:900;text-shadow:0 2px 2px #000,2px 2px 3px #000,-1px -1px 2px #000}
 .pc-pos-note{flex:1;min-width:140px;color:var(--dim);font-size:12px;line-height:1.5}
 .pc-pos-note .btn{margin-top:8px}
+.pc-trim{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:#FAFAFA}
+.pc-trim-video{width:100%!important;max-height:none!important;aspect-ratio:16/9!important;object-fit:contain;background:#17110E;border-radius:9px}
+.pc-trim-track{position:relative;height:38px;border-radius:8px;background:linear-gradient(90deg,#DDD5D0,#BEB3AC);touch-action:none;user-select:none;cursor:pointer}
+.pc-trim-track:after{content:"";position:absolute;left:0;right:0;top:17px;height:4px;background:#8D8179;opacity:.5;pointer-events:none}
+.pc-trim-selected{position:absolute;top:5px;bottom:5px;border:2px solid var(--brand-deep);border-radius:5px;background:rgba(255,139,51,.36);cursor:grab;z-index:2}
+.pc-trim-selected:active{cursor:grabbing}
+.pc-trim-handle{position:absolute;top:-3px;bottom:-3px;width:16px;transform:translateX(-50%);border:2px solid #fff;border-radius:6px;background:var(--brand-deep);box-shadow:0 1px 5px #0004;z-index:3;cursor:ew-resize;padding:0}
+.pc-trim-handle:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.pc-trim-track.disabled{opacity:.45;cursor:not-allowed}
+.pc-trim-times{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.pc-trim-buttons{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pc-trim-error{font-size:12px;color:var(--bad)}
+.pc-filter{display:grid;gap:8px}
+.pc-filter input[type=range],.pc-filter-options input[type=range]{width:100%;accent-color:var(--brand)}
+.pc-filter-value{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 #toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:50}
 .toast{background:var(--frame);color:var(--frame-text);border:1px solid var(--frame-2);border-radius:var(--r);padding:12px 16px;max-width:380px;animation:rise .2s ease;display:flex;gap:10px;align-items:center;font-weight:500}
@@ -1411,6 +1426,11 @@ function drawAdd(variant) {
         <label><input type="checkbox" id="o_captions" data-caption-toggle ${c?.captions === false ? "" : "checked"}>Generate captions</label></div>
         ${choice("o_style", Object.entries(S.status.styles).map(([k, v]) => ({v:k, label:v, prev:capPrev(k)})), c?.style ?? "bounce", c?.captions === false)}</div>
       <div class="ob"><div class="ot">Layout</div>${choice("o_layout", Object.entries(S.status.layouts).map(([k, v]) => ({v:k, label:LAYOUT_SHORT[k] || v, title:v, prev:`<span class="lay-prev ${esc(k)}"><span class="ph"><i></i></span></span>`})), c?.layout ?? "blur")}</div>
+      <div class="ob wide pc-filter-options"><label class="f">Manual video filter<select id="o_filter">${opts(FILTER_CHOICES, c?.filter || "original")}</select></label>
+        <label class="f">Filter strength <span class="pc-filter-value" id="o_filter_strength_value">${c?.filter_strength ?? 70}%</span>
+          <input id="o_filter_strength" type="range" min="0" max="100" step="5" value="${c?.filter_strength ?? 70}"></label>
+        <p class="hint">Original is selected by default. Choose a look yourself; Gaming Vibrant is a good starting point for gameplay. This does not change the audio.</p>
+        <p class="hint">For manual trimming, click a generated clip to open its preview and use the trim timeline there. Extension is limited to source footage available to that clip.</p></div>
       <div class="ob"><div class="ot">Maximum source download</div><input type="hidden" id="o_quality" value="${c?.quality ?? 2160}"><div class="seg" role="group" aria-label="Maximum source download quality">
         <button type="button" data-seg="o_quality" data-v="720" aria-pressed="${String(c?.quality ?? 2160) === "720"}">720p<small>Smaller download</small></button>
         <button type="button" data-seg="o_quality" data-v="1080" aria-pressed="${String(c?.quality ?? 2160) === "1080"}">1080p<small>Full HD</small></button>
@@ -1437,6 +1457,15 @@ function drawAdd(variant) {
   drawAtt();
 }
 const LAYOUT_SHORT = {blur:"Blurred fill", zoom:"Zoomed in", crop:"Fill screen", left:"Keep left", right:"Keep right", fit:"Black bars", split:"Split screen", gameplay:"Gameplay + facecam"};
+const FILTER_CHOICES = {
+  original:"Original · no filter",
+  gaming:"Gaming Vibrant · recommended",
+  cinematic:"Cinematic",
+  clean:"Clean & Sharp",
+  warm:"Warm",
+  cool:"Cool",
+  bw:"Black & White"
+};
 /* The language spoken in the video picks which speech model writes the transcript. Languages other than English
    need their model downloaded once (Settings → Speech models). */
 const LANG_NATIVE = {ar:"العربية"};
@@ -1523,6 +1552,7 @@ function jobOptions() {
   const n = id => { const v = $(id).value; return v === "" ? null : Number(v); };
   const o = {max_clips:n("#o_max"), min_len:n("#o_min"), max_len:n("#o_maxlen"), captions:$("#o_captions").checked, clip_method:$("#o_clip_method").value, style:$("#o_style").value, layout:$("#o_layout").value, quality:n("#o_quality"),
     export_resolution:$("#o_export_resolution").value, export_encoder:$("#o_export_encoder").value, export_quality:$("#o_export_quality").value,
+    filter:$("#o_filter").value, filter_strength:Number($("#o_filter_strength").value),
     hook_text:$("#o_hook").value.trim(), description_text:$("#o_desc").value.trim(), lang:$("#o_lang")?.value || "en"};
   if (n("#o_from") !== null) o.range_start = n("#o_from") * 60;
   if (n("#o_to") !== null) o.range_end = n("#o_to") * 60;
@@ -1638,8 +1668,16 @@ function onLink(input) {
   if (fullLink(u)) return takeLink(A, u, input);
   linkTimer = setTimeout(() => { if (input.value.trim() === u) takeLink(A, u, input); }, 900);   // other link shapes: take it once typing stops
 }
-document.addEventListener("input", e => { if (e.target.id === "url") onLink(e.target);
-  if (e.target.closest?.("#cform") && e.target.dataset.k && !/checkbox|radio/.test(e.target.type)) dirty(true); });
+document.addEventListener("input", e => {
+  if (e.target.id === "url") onLink(e.target);
+  if (e.target.closest?.("#cform") && e.target.dataset.k && !/checkbox|radio/.test(e.target.type)) dirty(true);
+  if (e.target.id === "o_filter_strength") $("#o_filter_strength_value").textContent = e.target.value + "%";
+  if (e.target.matches?.('#clipdlg [data-f="filter_strength"]')) {
+    $("#pcFilterStrengthValue").textContent = e.target.value + "%";
+    syncClipFilterPreview();
+  }
+  if (e.target.matches?.('#clipdlg [data-f="filter"]')) syncClipFilterPreview();
+});
 document.addEventListener("keydown", e => { if (e.target.id === "url" && e.key === "Enter" && e.target.value.trim() && looksLink(e.target.value.trim())) { e.preventDefault(); clearTimeout(linkTimer); takeLink(att(), e.target.value.trim(), e.target); } });
 document.addEventListener("click", e => {
   const r = e.target.closest("[data-rm]"), A = att(); if (!r || A.busy) return;
@@ -2320,6 +2358,178 @@ function initClipPositionEditor() {
   });
   paint();
 }
+function syncClipFilterPreview() {
+  const video = $("#stage video");
+  if (!video) return;
+  const preset = $('[data-f="filter"]', $("#clipdlg"))?.value || "original";
+  const strength = Math.max(0, Math.min(100, Number($('[data-f="filter_strength"]', $("#clipdlg"))?.value ?? 70))) / 100;
+  const looks = {
+    original: "",
+    gaming: `saturate(${1 + .34 * strength}) contrast(${1 + .09 * strength}) brightness(${1 + .012 * strength})`,
+    cinematic: `contrast(${1 + .12 * strength}) saturate(${1 - .16 * strength}) sepia(${.08 * strength})`,
+    clean: `contrast(${1 + .05 * strength}) saturate(${1 + .025 * strength})`,
+    warm: `sepia(${.18 * strength}) saturate(${1 + .04 * strength})`,
+    cool: `hue-rotate(${-8 * strength}deg) saturate(${1 + .025 * strength})`,
+    bw: `grayscale(${strength})`
+  };
+  video.style.filter = looks[preset] || "";
+}
+function initClipTrimEditor() {
+  const video = $("#pcTrimVideo"), track = $("#pcTrimTrack");
+  const startInput = $('[data-f="start"]', $("#clipdlg")), endInput = $('[data-f="end"]', $("#clipdlg"));
+  const selected = $("#pcTrimSelection"), leftHandle = $("#pcTrimStartHandle"), rightHandle = $("#pcTrimEndHandle");
+  const bounds = $("#pcTrimBounds"), error = $("#pcTrimError"), playButton = $("#pcTrimPlay");
+  if (!video || !track || !startInput || !endInput || !selected) return;
+
+  const sourceStart = Number(track.dataset.offset || 0);
+  const hintedEnd = Number(track.dataset.sourceEnd || 0);
+  const minLength = 3, maxLength = 180;
+  let sourceEnd = 0, ready = false, drag = null, selectionPlaying = false;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const current = () => ({start:Number(startInput.value), end:Number(endInput.value)});
+  const times = () => {
+    const v = current();
+    return {start:Number.isFinite(v.start) ? v.start : sourceStart,
+            end:Number.isFinite(v.end) ? v.end : sourceStart + minLength};
+  };
+  function paint(seek = false) {
+    const v = times();
+    const length = Math.max(0.001, sourceEnd - sourceStart);
+    const left = ready ? clamp((v.start - sourceStart) / length * 100, 0, 100) : 0;
+    const right = ready ? clamp((v.end - sourceStart) / length * 100, 0, 100) : 0;
+    if (ready) {
+      selected.style.left = left + "%";
+      selected.style.width = Math.max(0, right - left) + "%";
+      leftHandle.style.left = left + "%";
+      rightHandle.style.left = right + "%";
+      track.classList.remove("disabled");
+    }
+    startInput.value = v.start.toFixed(2);
+    endInput.value = v.end.toFixed(2);
+    $("#pcTrimStartMark").textContent = fmtLen(v.start);
+    $("#pcTrimEndMark").textContent = fmtLen(v.end);
+    $("#pcTrimDuration").textContent = fmtLen(Math.max(0, v.end - v.start)) + " selected";
+    if (seek && ready) {
+      const localStart = Math.max(0, v.start - sourceStart);
+      const localEnd = Math.max(localStart + minLength, v.end - sourceStart);
+      if (video.currentTime < localStart || video.currentTime >= localEnd) video.currentTime = localStart;
+    }
+  }
+  function apply(rawStart, rawEnd, seek = false) {
+    let start = Number(rawStart), end = Number(rawEnd);
+    if (!Number.isFinite(start)) start = sourceStart;
+    if (!Number.isFinite(end)) end = start + minLength;
+    if (ready) {
+      start = clamp(start, sourceStart, sourceEnd - minLength);
+      end = clamp(end, start + minLength, sourceEnd);
+      if (end - start > maxLength) end = start + maxLength;
+      if (end - start < minLength) start = Math.max(sourceStart, end - minLength);
+    } else {
+      if (end < start + minLength) end = start + minLength;
+      if (end - start > maxLength) end = start + maxLength;
+    }
+    startInput.value = start.toFixed(2);
+    endInput.value = end.toFixed(2);
+    paint(seek);
+  }
+  function timeAt(clientX) {
+    const rect = track.getBoundingClientRect();
+    const fraction = clamp((clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+    return sourceStart + fraction * (sourceEnd - sourceStart);
+  }
+
+  video.addEventListener("loadedmetadata", () => {
+    const duration = Number(video.duration);
+    if (!Number.isFinite(duration) || duration < minLength) {
+      error.hidden = false;
+      bounds.textContent = "Source duration is unavailable.";
+      track.classList.add("disabled");
+      return;
+    }
+    sourceEnd = sourceStart + duration;
+    if (hintedEnd > sourceStart) sourceEnd = Math.min(sourceEnd, hintedEnd);
+    if (sourceEnd - sourceStart < minLength) {
+      error.hidden = false;
+      bounds.textContent = "Not enough source footage is available to trim this clip.";
+      track.classList.add("disabled");
+      return;
+    }
+    ready = true;
+    error.hidden = true;
+    bounds.textContent = `Available source: ${fmtLen(sourceStart)} – ${fmtLen(sourceEnd)} · clips can be 3–180 seconds`;
+    apply(Number(startInput.value), Number(endInput.value), true);
+  });
+  video.addEventListener("error", () => {
+    error.hidden = false;
+    bounds.textContent = "Source preview unavailable. You can still enter times manually.";
+    track.classList.add("disabled");
+  });
+  track.addEventListener("pointerdown", e => {
+    if (!ready) return;
+    const v = times(), at = timeAt(e.clientX);
+    const handle = e.target.closest("[data-trim-handle]");
+    const inside = e.target.closest("#pcTrimSelection");
+    const mode = handle ? handle.dataset.trimHandle : inside ? "move"
+      : Math.abs(at - v.start) <= Math.abs(at - v.end) ? "start" : "end";
+    drag = {pointerId:e.pointerId, mode, at, start:v.start, end:v.end};
+    track.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  track.addEventListener("pointermove", e => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    const at = timeAt(e.clientX), delta = at - drag.at;
+    if (drag.mode === "move") {
+      const span = drag.end - drag.start;
+      const start = clamp(drag.start + delta, sourceStart, sourceEnd - span);
+      apply(start, start + span);
+    } else if (drag.mode === "start") {
+      apply(clamp(at, Math.max(sourceStart, drag.end - maxLength), drag.end - minLength), drag.end);
+    } else {
+      apply(drag.start, clamp(at, drag.start + minLength, Math.min(sourceEnd, drag.start + maxLength)));
+    }
+  });
+  const finishDrag = e => {
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    drag = null;
+    paint(true);
+  };
+  track.addEventListener("pointerup", finishDrag);
+  track.addEventListener("pointercancel", finishDrag);
+  startInput.addEventListener("change", () => apply(Number(startInput.value), Number(endInput.value), true));
+  endInput.addEventListener("change", () => apply(Number(startInput.value), Number(endInput.value), true));
+  [leftHandle, rightHandle].forEach(handle => handle.addEventListener("keydown", e => {
+    if (!ready || !["ArrowLeft","ArrowRight"].includes(e.key)) return;
+    e.preventDefault();
+    const step = e.shiftKey ? 5 : .5, v = times(), delta = e.key === "ArrowRight" ? step : -step;
+    if (handle.dataset.trimHandle === "start") apply(v.start + delta, v.end, true);
+    else apply(v.start, v.end + delta, true);
+  }));
+  video.addEventListener("play", () => {
+    if (!ready) return;
+    const v = times(), localStart = Math.max(0, v.start - sourceStart), localEnd = v.end - sourceStart;
+    if (video.currentTime < localStart || video.currentTime >= localEnd) video.currentTime = localStart;
+    selectionPlaying = true;
+  });
+  video.addEventListener("timeupdate", () => {
+    if (!ready || !selectionPlaying) return;
+    const v = times(), localStart = Math.max(0, v.start - sourceStart), localEnd = v.end - sourceStart;
+    if (video.currentTime >= localEnd - .04) {
+      selectionPlaying = false;
+      video.pause();
+      video.currentTime = localStart;
+    }
+  });
+  video.addEventListener("pause", () => { selectionPlaying = false; });
+  playButton?.addEventListener("click", async () => {
+    if (!ready) return;
+    if (!video.paused) { video.pause(); return; }
+    const v = times();
+    video.currentTime = Math.max(0, v.start - sourceStart);
+    try { await video.play(); } catch { toast("The source preview could not start.", "bad"); }
+  });
+  track.classList.add("disabled");
+  paint();
+}
 function drawClipDlg(full) {
   const j = jobOf(D.jid), c = j?.clips.find(x => x.id === D.cid), dlg = $("#clipdlg");
   if (!c) { if (dlg.open) dlg.close(); return; }
@@ -2330,6 +2540,8 @@ function drawClipDlg(full) {
   const exportResolution = c.export_resolution || j.options?.export_resolution || "1080p";
   const exportEncoder = c.export_encoder || j.options?.export_encoder || "h264";
   const exportQuality = c.export_quality || j.options?.export_quality || "balanced";
+  const filter = c.filter || j.options?.filter || "original";
+  const filterStrength = c.filter_strength ?? j.options?.filter_strength ?? 70;
   if (full) {
     dlg.innerHTML = `<div class="editor"><div class="stage" id="stage">${stage}</div>
       <div class="panel">
@@ -2355,6 +2567,30 @@ function drawClipDlg(full) {
         </div>
         <input type="hidden" data-f="hook_position" value="${esc(c.hook_position ? JSON.stringify(c.hook_position) : "")}">
         <input type="hidden" data-f="caption_position" value="${esc(c.caption_position ? JSON.stringify(c.caption_position) : "")}">
+        <h3>Trim clip manually</h3>
+        <p class="help">Drag either edge to cut or extend the clip. Drag the highlighted part to move the whole selection. You can also type exact times below.</p>
+        <div class="pc-trim">
+          <video class="pc-trim-video" id="pcTrimVideo" src="/api/jobs/${encodeURIComponent(j.id)}/clips/${encodeURIComponent(c.id)}/source" controls preload="metadata" playsinline></video>
+          <p class="pc-trim-error" id="pcTrimError" hidden>The source preview could not be loaded. You can still enter start and end times manually.</p>
+          <div class="pc-trim-track" id="pcTrimTrack" data-offset="${esc(c.src_offset ?? 0)}" data-source-end="${esc(c.src_end ?? 0)}" aria-label="Clip trim timeline">
+            <div class="pc-trim-selected" id="pcTrimSelection" title="Drag to move the selected clip"></div>
+            <button type="button" class="pc-trim-handle" id="pcTrimStartHandle" data-trim-handle="start" aria-label="Drag clip start"></button>
+            <button type="button" class="pc-trim-handle" id="pcTrimEndHandle" data-trim-handle="end" aria-label="Drag clip end"></button>
+          </div>
+          <div class="pc-trim-times"><span>Start: <b id="pcTrimStartMark">${fmtLen(c.start)}</b></span><span>End: <b id="pcTrimEndMark">${fmtLen(c.end)}</b></span><b id="pcTrimDuration">${fmtLen(c.end-c.start)} selected</b></div>
+          <div class="two">
+            <label class="f">Start (seconds)<input data-f="start" type="number" min="0" step="0.1" value="${c.start}"></label>
+            <label class="f">End (seconds)<input data-f="end" type="number" min="0" step="0.1" value="${c.end}"></label>
+          </div>
+          <div class="pc-trim-buttons"><button type="button" class="btn sm" id="pcTrimPlay">${ic("play")}Play selected part</button><span class="hint" id="pcTrimBounds">Loading available source range…</span></div>
+        </div>
+        <h3>Manual video filter</h3>
+        <div class="pc-filter">
+          <label class="f">Filter preset<select data-f="filter">${opts(FILTER_CHOICES, filter)}</select></label>
+          <label class="f">Filter strength <span class="pc-filter-value" id="pcFilterStrengthValue">${filterStrength}%</span>
+            <input data-f="filter_strength" type="range" min="0" max="100" step="5" value="${filterStrength}"></label>
+          <p class="help">Changes are previewed on the clip at the left. Original keeps the video unchanged. The final filter is applied before captions.</p>
+        </div>
         <h3>Export settings</h3>
         <div class="two"><label class="f">Output resolution<select data-f="export_resolution">
           <option value="1080p" ${exportResolution === "1080p" ? "selected" : ""}>1080p · 1080 × 1920</option>
@@ -2373,8 +2609,6 @@ function drawClipDlg(full) {
         </select></label>
         <p class="help">The selected codec is kept. PeakCut tries NVIDIA NVENC first when available, then uses another encoder for the same codec if needed.</p>
         ${c.encoder ? `<p class="hint">Last export: ${esc(c.resolution || "")} · ${esc(c.encoder)}</p>` : ""}
-        <div class="two"><label class="f">Start (seconds)<input data-f="start" type="number" step="0.5" value="${c.start}"></label>
-          <label class="f">End (seconds)<input data-f="end" type="number" step="0.5" value="${c.end}"></label></div>
         <div class="row" style="justify-content:space-between;align-items:center"><h3>Post text</h3>
           <button class="btn sm" data-act="writetext">Write again with AI</button></div>
         <label class="f">Title<input data-f="title" value="${esc(c.title)}"></label>
@@ -2392,9 +2626,10 @@ function drawClipDlg(full) {
       </div></div>`;
   } else if (D.sig !== sig) $("#stage").innerHTML = stage;
   D.sig = sig;
+  syncClipFilterPreview();
   put($("#dposts"), postPills(c));
   // The clip editor is built dynamically; initialize custom controls explicitly after its markup exists.
-  if (full) { window.initPeakCutCustomLayout?.(); initClipPositionEditor(); }
+  if (full) { window.initPeakCutCustomLayout?.(); initClipPositionEditor(); initClipTrimEditor(); }
 }
 function postText() {   // the post text as it is in the clip editor right now
   const v = k => $(`#clipdlg [data-f="${k}"]`).value;
@@ -2402,6 +2637,9 @@ function postText() {   // the post text as it is in the clip editor right now
 }
 $("#clipdlg").addEventListener("close", () => { $("#clipdlg").innerHTML = ""; D.jid = null; });
 $("#clipdlg").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+$("#clipdlg").addEventListener("change", e => {
+  if (e.target.matches?.('#clipdlg [data-f="filter"]')) syncClipFilterPreview();
+});
 
 /* ============================================================ render + polling */
 function render() {
@@ -2720,7 +2958,7 @@ document.addEventListener("click", async e => {
     }
     if (a === "remake") {
       const body = {}; $$("#clipdlg [data-f]").forEach(i => {
-        body[i.dataset.f] = i.type === "checkbox" ? i.checked : i.type === "number" ? Number(i.value) : i.value;
+        body[i.dataset.f] = i.type === "checkbox" ? i.checked : (i.type === "number" || i.type === "range") ? Number(i.value) : i.value;
       });
       await send(`/api/jobs/${D.jid}/clips/${D.cid}/render`, body); toast("Re-making the clip…", "ok"); return tick();
     }

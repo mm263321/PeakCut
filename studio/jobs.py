@@ -111,7 +111,7 @@ on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first f
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160,
             "clip_method": "peakcut", **export_settings.DEFAULTS,
             "range_start": None, "range_end": None, "captions": True, "hook_text": "", "description_text": "",
-            "lang": "en"}   # lang: the language spoken
+            "lang": "en", "filter": "original", "filter_strength": 70}   # lang: the language spoken
 
 
 LIMITS = {"max_clips": (1, 20), "min_len": (5, 120), "max_len": (10, 180), "quality": (360, 2160)}
@@ -137,6 +137,10 @@ def clean_options(options) -> dict:
         elif k in export_settings.DEFAULTS:
             out[k] = export_settings.clean({k: v})[k]
             continue
+        elif k == "filter":
+            v = v if v in render.FILTER_PRESETS else DEFAULTS["filter"]
+        elif k == "filter_strength":
+            v = max(0, min(100, int(float(v))))
         elif k == "clip_method":
             v = v if v in ("peakcut", "advanced") else DEFAULTS["clip_method"]
         elif k == "style":
@@ -389,9 +393,15 @@ def request_render(jid, cid, changes: dict):
     for k in ("start", "end"):
         if k in changes:
             new[k] = round(float(changes[k]), 2)
-    if "src_offset" in clip:  # live clip: can only move inside the saved piece of stream
+    if "src_offset" in clip:  # live/section clip: stay inside the saved piece of source footage
         new["start"] = max(new["start"], clip["src_offset"])
         new["end"] = min(new["end"], clip["src_end"])
+    else:
+        # Full-source uploads can be trimmed anywhere, but never beyond the original video's duration.
+        source_duration = float(job.get("duration") or 0)
+        if math.isfinite(source_duration) and source_duration >= 3:
+            new["start"] = min(new["start"], source_duration - 3)
+            new["end"] = min(new["end"], source_duration)
     if not (math.isfinite(new["start"]) and math.isfinite(new["end"])) or new["start"] < 0:
         raise ValueError("Those times aren't valid.")
     if not 3 <= new["end"] - new["start"] <= 180:
@@ -399,6 +409,7 @@ def request_render(jid, cid, changes: dict):
     for k in ("hook", "title", "description", "style", "layout"):
         if k in changes:
             new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000}.get(k, 20)]
+    new.update(clean_options({k: changes[k] for k in ("filter", "filter_strength") if k in changes}))
     for k in ("hook_position", "caption_position"):
         if k in changes:
             new[k] = render.clean_position(changes[k])
@@ -479,6 +490,16 @@ def clip_export_settings(job, clip) -> dict:
     return export_settings.clean(selected)
 
 
+def clip_video_settings(job, clip) -> dict:
+    """Job-level manual filter defaults, overridden by any choices saved on this individual clip."""
+    selected = dict(job.get("options") or {})
+    selected.update(clip or {})
+    return {
+        "filter": selected.get("filter", DEFAULTS["filter"]),
+        "filter_strength": selected.get("filter_strength", DEFAULTS["filter_strength"]),
+    }
+
+
 def render_one(job, clip, words):
     d = Path(job["dir"])
     clip["status"] = "rendering"
@@ -494,6 +515,7 @@ def render_one(job, clip, words):
         near = _caption_words(job, clip, words, off) if clip.get("captions", True) else []
         # Export precedence: creator settings flow into the job; a clip's saved settings override them.
         local.update(clip_export_settings(job, clip))
+        local.update(clip_video_settings(job, clip))
         out = render.render_clip(src, d / "clips", clip["id"], local, near, job["width"], job["height"])
         clip.update(out, status="done", version=clip.get("version", 0) + 1, error=None)
         post = {k: clip[k] for k in ("title", "description", "hashtags", "hook", "start", "end", "score")}

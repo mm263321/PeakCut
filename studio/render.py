@@ -40,6 +40,46 @@ HOOK = {"font": "Poppins ExtraBold", "size": 96, "ink": "14100E", "box": "FFFFFF
 FONT_FILES = {"Poppins ExtraBold": "Poppins-ExtraBold.ttf", "Anton": "Anton-Regular.ttf", "Archivo Black": "ArchivoBlack-Regular.ttf"}
 CAP_MAX_W = 960   # captions never run wider than this, whatever is said
 
+FILTER_PRESETS = {
+    "original": "Original",
+    "gaming": "Gaming Vibrant",
+    "cinematic": "Cinematic",
+    "clean": "Clean & Sharp",
+    "warm": "Warm",
+    "cool": "Cool",
+    "bw": "Black & White",
+}
+
+
+def _color_filter(preset="original", strength=70) -> str:
+    """A restrained, optional colour look. It runs on video only, before the captions are drawn."""
+    preset = preset if preset in FILTER_PRESETS else "original"
+    try:
+        power = max(0.0, min(100.0, float(strength))) / 100.0
+    except (TypeError, ValueError):
+        power = 0.7
+    if preset == "original" or power <= 0:
+        return ""
+    if preset == "gaming":
+        return (f"eq=contrast={1 + 0.09 * power:.3f}:saturation={1 + 0.34 * power:.3f}:"
+                f"brightness={0.012 * power:.3f}")
+    if preset == "cinematic":
+        return (f"eq=contrast={1 + 0.12 * power:.3f}:saturation={1 - 0.16 * power:.3f}:"
+                f"brightness={-0.018 * power:.3f},colorbalance=rs={0.035 * power:.3f}:"
+                f"gs={-0.006 * power:.3f}:bs={-0.035 * power:.3f}")
+    if preset == "clean":
+        return (f"eq=contrast={1 + 0.05 * power:.3f}:saturation={1 + 0.025 * power:.3f},"
+                f"unsharp=5:5:{0.65 * power:.3f}:3:3:{0.30 * power:.3f}")
+    if preset == "warm":
+        return (f"colorbalance=rs={0.08 * power:.3f}:gs={0.025 * power:.3f}:"
+                f"bs={-0.075 * power:.3f}")
+    if preset == "cool":
+        return (f"colorbalance=rs={-0.07 * power:.3f}:gs={0.005 * power:.3f}:"
+                f"bs={0.085 * power:.3f}")
+    if preset == "bw":
+        return f"eq=saturation={1 - power:.3f}"
+    return ""
+
 
 class _Font:
     """Measures text exactly as the renderer will draw it, so every word can be placed by hand: the highlighted
@@ -384,18 +424,24 @@ def render_clip(src: Path, out_dir: Path, name: str, clip: dict, words: list, sr
             work, src, out_dir, name, start, end, layout, fg_h, ass, face=face, meta=meta,
             custom=clip.get("custom_layout"), duration=end - start, width=width, height=height,
             codec=settings["export_encoder"], quality=settings["export_quality"],
+            filter_preset=clip.get("filter", "original"), filter_strength=clip.get("filter_strength", 70),
         )
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 def _render_in(work: Path, src: Path, out_dir: Path, name: str, start, end, layout, fg_h, ass: str,
                face=None, meta=None, custom=None, duration=60.0, width=W, height=H,
-               codec="h264", quality="balanced") -> dict:
+               codec="h264", quality="balanced", filter_preset="original", filter_strength=70) -> dict:
     (work / f"{name}.ass").write_text(ass, encoding="utf-8")
     (work / "f").mkdir()
     for f in config.FONTS_DIR.glob("*.ttf"):
         shutil.copyfile(f, work / "f" / f.name)
-    fc = _filter(layout, fg_h, face, custom=custom, duration=duration, width=width, height=height) + f"[v0]ass={name}.ass:fontsdir=f[v]"
+    base_filter = _filter(layout, fg_h, face, custom=custom, duration=duration, width=width, height=height)
+    look = _color_filter(filter_preset, filter_strength)
+    if look:
+        fc = base_filter + f"[v0]{look}[v1];[v1]ass={name}.ass:fontsdir=f[v]"
+    else:
+        fc = base_filter + f"[v0]ass={name}.ass:fontsdir=f[v]"
     base = ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-t", f"{end - start:.2f}", "-i", str(src),
             "-filter_complex", fc, "-map", "[v]", "-map", "0:a:0", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
             "-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
