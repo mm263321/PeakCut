@@ -12,7 +12,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from . import brain, config, creators, ctx, facecam, fetch_model, games, hashtags, load, media, quality, render, roman, safe, transcribe, usage
+from . import brain, config, creators, ctx, custom_layout, facecam, fetch_model, games, hashtags, load, media, quality, render, roman, safe, transcribe, usage
 
 class _FairQueue:
     """Whose video is next. Each person has their own line and the lines take turns, so someone who adds ten
@@ -390,12 +390,17 @@ def request_render(jid, cid, changes: dict):
     for k in ("hook", "title", "description", "style", "layout"):
         if k in changes:
             new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000}.get(k, 20)]
+    if new.get("layout") == "custom" or "custom_layout" in changes:
+        raw_layout = changes.get("custom_layout", new.get("custom_layout"))
+        new["custom_layout"] = custom_layout.clean(raw_layout)
     if "hashtags" in changes:
         new["hashtags"] = clean_hashtags(changes["hashtags"])
     if new.get("style") not in render.STYLES:
         new["style"] = DEFAULTS["style"]
-    if new.get("layout") not in render.LAYOUTS:
+    if new.get("layout") not in render.LAYOUTS and new.get("layout") != "custom":
         new["layout"] = DEFAULTS["layout"]
+    if new.get("layout") == "custom" and not new.get("custom_layout"):
+        raise ValueError("Select both the streamer facecam and gameplay areas before re-making this clip.")
     clip.update(new, status="queued")
     save(job)
     _q.put(("clip", jid, cid))
