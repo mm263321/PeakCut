@@ -32,9 +32,10 @@ DEFAULTS = {
 
 # These values are intentionally separate for each encoder family. Lower CRF/CQ means higher quality.
 _PROFILES = {
-    "balanced": {"nvenc": 25, "qsv": 25, "crf": 23, "av1_crf": 34},
-    "high": {"nvenc": 21, "qsv": 21, "crf": 20, "av1_crf": 30},
-    "maximum": {"nvenc": 18, "qsv": 18, "crf": 17, "av1_crf": 26},
+    # Balanced keeps the previous H.264 quality (QSV 23 / x264 CRF 21) as its starting point.
+    "balanced": {"nvenc": 23, "qsv": 23, "crf": 21, "av1_crf": 33},
+    "high": {"nvenc": 20, "qsv": 20, "crf": 18, "av1_crf": 29},
+    "maximum": {"nvenc": 17, "qsv": 17, "crf": 16, "av1_crf": 25},
 }
 
 _ENCODERS = {
