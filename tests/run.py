@@ -64,6 +64,7 @@ def main() -> int:
                 ("captions never overlap, stuck clips, sentence endings", ["tests/test_stuck.py"]),
                 ("custom 16:9 source crops and 9:16 composition", ["tests/test_custom_layout.py"]),
                 ("native 1080p, 2K and 4K exports with codec fallbacks", ["tests/test_export_settings.py"]),
+                ("creator-specific export preferences on live clips", ["tests/test_creator_live_export.py"]),
                 ("ad breaks and frozen screens", ["tests/test_static.py"]),
                 ("answers that are not quite right", ["tests/test_answer.py"]),
                 ("waiting out AI rate limits", ["tests/test_retry.py"]),
