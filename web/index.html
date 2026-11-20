@@ -1440,11 +1440,25 @@ function setLang(v) {   // when the creator is changed in the add bar, their lan
   i.value = v; i.parentElement.querySelectorAll("[data-seg]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
 }
 document.addEventListener("change", e => { if (e.target.id === "o_creator") setLang(S.creators.find(x => x.id === e.target.value)?.lang || "en"); });
-const CAP_LOOK = {bounce:{font:"'Archivo Black'", hl:"#FFFF00", up:true}, hype:{font:"Anton", hl:"#FF3C3C", up:true}, clean:{font:"Poppins", hl:"#6BD7FF", up:false, w:800}};
+const CAP_LOOK = {
+  bounce:{font:"'Archivo Black'",hl:"#FFFF00",up:true},
+  hype:{font:"Anton",hl:"#FF3C3C",up:true},
+  clean:{font:"Poppins",hl:"#6BD7FF",up:false,w:800},
+  karaoke:{font:"Poppins",hl:"#FFE600",up:false,w:800},
+  impact:{font:"Anton",hl:"#FFE05A",up:true},
+  neon:{font:"'Archivo Black'",hl:"#35E8FF",up:true,glow:true},
+  redalert:{font:"Anton",hl:"#FF3C50",up:true},
+  gaming:{font:"'Archivo Black'",hl:"#72FF4D",up:true},
+  gradient:{font:"Poppins",hl:"#B77BFF",up:true,w:800,gradient:true}
+};
 function capPrev(k) {
-  const s = CAP_LOOK[k] || {font:"inherit", hl:"#FF8B33", up:true};
-  const t = s.up ? ["CLIP", "THIS"] : ["Clip", "this"];
-  return `<span class="cap-prev" style="font-family:${s.font},sans-serif;font-weight:${s.w || 400}">${t[0]}&nbsp;<b style="color:${s.hl}">${t[1]}</b></span>`;
+  const s = CAP_LOOK[k] || {font:"inherit",hl:"#FF8B33",up:true};
+  const t = s.up ? ["CLIP","THIS"] : ["Clip","this"];
+  const glow = s.glow ? `;text-shadow:0 0 3px ${s.hl},0 0 9px ${s.hl},0 0 16px ${s.hl}` : "";
+  const mark = s.gradient
+    ? `<b style="background:linear-gradient(90deg,#ff526f,#ffd54a,#65df83,#37d8ff,#ae70ff);background-clip:text;-webkit-background-clip:text;color:transparent">${t[1]}</b>`
+    : `<b style="color:${s.hl}${glow}">${t[1]}</b>`;
+  return `<span class="cap-prev" style="font-family:${s.font},sans-serif;font-weight:${s.w || 400}">${t[0]}&nbsp;${mark}</span>`;
 }
 function picker(id, aria, items, val) {
   const cur = items.find(x => String(x.v) === String(val)) || items[0];

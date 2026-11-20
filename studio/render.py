@@ -18,6 +18,21 @@ STYLES = {
              "strong": "00D7FF", "outline": 7, "pop": 114, "upper": True, "per": 2},
     "clean": {"label": "Clean", "font": "Poppins ExtraBold", "size": 100, "base": "FFFFFF", "active": "6BD7FF",
               "strong": "FFFFFF", "outline": 5, "pop": 106, "upper": False, "per": 4},
+
+    "karaoke": {"label": "Karaoke", "font": "Poppins ExtraBold", "size": 112, "base": "FFFFFF",
+                "active": "00E6FF", "strong": "35AEFF", "outline": 6, "pop": 108, "upper": False, "per": 1},
+    "impact": {"label": "Impact", "font": "Anton", "size": 168, "base": "FFFFFF",
+               "active": "00E6FF", "strong": "3C3CFF", "outline": 10, "pop": 116, "upper": True, "per": 2},
+    "neon": {"label": "Neon Glow", "font": "Archivo Black", "size": 126, "base": "FFFFFF",
+             "active": "FFE835", "strong": "FF73BE", "outline": 8, "pop": 116, "upper": True, "per": 2,
+             "glow": True},
+    "redalert": {"label": "Red Alert", "font": "Anton", "size": 150, "base": "FFFFFF",
+                 "active": "3C3CFF", "strong": "3C3CFF", "outline": 9, "pop": 114, "upper": True, "per": 2},
+    "gaming": {"label": "Gaming", "font": "Archivo Black", "size": 132, "base": "FFFFFF",
+               "active": "4DFF72", "strong": "00E6FF", "outline": 9, "pop": 116, "upper": True, "per": 2},
+    "gradient": {"label": "Gradient", "font": "Poppins ExtraBold", "size": 118, "base": "FFFFFF",
+                 "active": "FFE835", "strong": "FF73BE", "outline": 6, "pop": 110, "upper": True, "per": 3,
+                 "gradient": True},
 }
 HOOK = {"font": "Poppins ExtraBold", "size": 96, "ink": "14100E", "box": "FFFFFF", "pad_x": 36, "pad_y": 22, "radius": 26,
         "max_w": 900}
@@ -234,10 +249,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             a = max(g_start, w["s"] - start)
             b = (g[i + 1]["s"] - start) if i + 1 < len(g) else g_end
             base = st["strong"] if _key(w["w"]) in strong else st["base"]
+            active = st["active"]
+            if st.get("gradient"):
+                spectrum = ("00E6FF", "4DFF72", "FF73BE", "35AEFF", "3C3CFF")
+                active = spectrum[(gi * 2 + i) % len(spectrum)]
             if a - g_start >= 0.02:                                                   # waiting to be said
                 ev.append(f"Dialogue: 1,{_ts(g_start)},{_ts(a)},Cap,,0,0,0,,{{{pos}\\c&H{base}&}}{t}")
-            if b - a >= 0.02:                                                         # being said: colour and a quick pop, in front
-                ev.append(f"Dialogue: 2,{_ts(a)},{_ts(b)},Cap,,0,0,0,,{{{pos}\\c&H{st['active']}&\\fscx94\\fscy94"
+            if b - a >= 0.02:
+                if st.get("glow"):
+                    glow_outline = max(10, st["outline"] + 4)
+                    ev.append(f"Dialogue: 1,{_ts(a)},{_ts(b)},Cap,,0,0,0,,{{{pos}\\c&H{active}&\\3c&H{active}&\\bord{glow_outline}\\blur3\\alpha&H55&}}{t}")                                                         # being said: colour and a quick pop, in front
+                ev.append(f"Dialogue: 2,{_ts(a)},{_ts(b)},Cap,,0,0,0,,{{{pos}\\c&H{active}&\\fscx94\\fscy94"
                           f"\\t(0,90,\\fscx{p}\\fscy{p})\\t(90,200,\\fscx{p - 5}\\fscy{p - 5})}}{t}")
             if g_end - b >= 0.02:                                                     # said
                 ev.append(f"Dialogue: 1,{_ts(b)},{_ts(g_end)},Cap,,0,0,0,,{{{pos}\\c&H{base}&\\fscx{p - 5}\\fscy{p - 5}"

@@ -81,6 +81,8 @@ def _clean(data: dict) -> dict:
         v = data[k]
         if k in NUMERIC:
             lo, hi = NUMERIC[k]
+            if isinstance(v, str) and not v.strip():
+                v = DEFAULTS[k]
             v = max(lo, min(hi, int(float(v))))
         elif k in ("auto_watch", "autopost", "ai_only_on_spike"):
             v = bool(v)
