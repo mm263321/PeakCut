@@ -18,6 +18,18 @@ import urllib.request
 from . import config, safe
 
 _SHERPA = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+_HINGLISH_REPO = "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx"
+_HINGLISH_REV = "9721eb7"  # pinned repository revision; the model files must not silently change
+DIRECT_FILES = {
+    "hinglish": ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
+}
+
+
+def file_url(lang: str, filename: str) -> str:
+    """URL for a file in a model published as separate files rather than one archive."""
+    if lang not in DIRECT_FILES or filename not in DIRECT_FILES[lang]:
+        raise ValueError("Unknown speech model file.")
+    return f"{_HINGLISH_REPO}/resolve/{_HINGLISH_REV}/hi-hinglish-swift/{filename}"
 
 # language -> (name shown on the pages, the model's folder name, where it is downloaded from, size in MB, credit,
 #              the archive's SHA-256 fingerprint, or "" when it is not checked)
@@ -27,6 +39,8 @@ MODELS = {
            "Parakeet TDT 0.6b v2 by NVIDIA (CC-BY-4.0)", ""),
     "ar": ("Arabic", config.ASR_MODEL_AR, config.ASR_MODEL_AR_URL, 107,
            "FastConformer Arabic by NVIDIA (CC-BY-4.0)", config.ASR_MODEL_AR_SHA256),
+    "hinglish": ("Hinglish", "sherpa-onnx-hi-hinglish-swift", "", 160,
+                 "Whisper Hindi2Hinglish Swift by Oriserve (Apache-2.0)", ""),
 }
 DEFAULT = "en"
 WAIT = 60   # seconds of silence from the connection before giving up, so a stalled download cannot hang everything
@@ -52,8 +66,10 @@ def folder(lang: str = DEFAULT):
 
 
 def ready(lang: str = DEFAULT) -> bool:
-    """Is the whole model there: the word list and all three parts?"""
+    """Is the whole model there: the word list and all required ONNX files?"""
     d = folder(lang)
+    if lang in DIRECT_FILES:
+        return all((d / name).is_file() and (d / name).stat().st_size > 0 for name in DIRECT_FILES[lang])
     if not (d / "tokens.txt").is_file():
         return False
     return all(any(d.glob(f"{part}*.onnx")) for part in ("encoder", "decoder", "joiner"))
@@ -96,7 +112,56 @@ def _save(lang: str, dest) -> str:
     return digest.hexdigest()
 
 
+def _fetch_direct(lang: str) -> None:
+    """Download a model published as separate files, then install it atomically."""
+    size = MODELS[lang][3]
+    st = state[lang]
+    st.update(doing=True, percent=0, error="")
+    print(f"\n  Downloading the {label(lang)} speech model (one time, about {size} MB)...\n", flush=True)
+    config.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    part = config.MODELS_DIR / f"speech-model-{lang}.downloading"
+    shutil.rmtree(part, ignore_errors=True)
+    part.mkdir()
+    try:
+        files = DIRECT_FILES[lang]
+        for index, filename in enumerate(files):
+            url = file_url(lang, filename)
+            dest = part / filename
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(url, timeout=WAIT) as response, dest.open("wb") as out:
+                total = int(response.headers.get("Content-Length") or 0)
+                received = 0
+                while chunk := response.read(1 << 20):
+                    out.write(chunk)
+                    digest.update(chunk)
+                    received += len(chunk)
+                    if total:
+                        within_file = min(1.0, received / total)
+                        st["percent"] = min(99, int((index + within_file) * 100 / len(files)))
+                if total and received != total:
+                    raise OSError(f"{filename} was incomplete ({received} of {total} bytes).")
+            if not received:
+                raise OSError(f"{filename} was empty.")
+        if not all((part / name).is_file() and (part / name).stat().st_size > 0 for name in files):
+            raise OSError("The download did not contain all required model files.")
+        shutil.rmtree(folder(lang), ignore_errors=True)
+        part.rename(folder(lang))
+        st.update(percent=100, error="")
+        print(f"  {label(lang)} speech model ready.\n", flush=True)
+    except Exception as e:  # noqa: BLE001
+        st["error"] = safe.friendly(e, 200)
+        raise RuntimeError(f"PeakCut couldn't download its {label(lang)} speech model (about {size} MB, needed once). "
+                           "Check the internet connection and free disk space, then try again. "
+                           f"What it reported: {st['error']}") from e
+    finally:
+        st["doing"] = False
+        shutil.rmtree(part, ignore_errors=True)
+
+
 def _fetch(lang: str):
+    if lang in DIRECT_FILES:
+        _fetch_direct(lang)
+        return
     name, size, want = MODELS[lang][1], MODELS[lang][3], MODELS[lang][5]
     st = state[lang]
     st.update(doing=True, percent=0, error="")

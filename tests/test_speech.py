@@ -51,7 +51,8 @@ def archive(name):
     return out.getvalue()
 
 
-ARCHIVES = {k: archive(m[1]) for k, m in fetch_model.MODELS.items()}
+ARCHIVES = {k: archive(m[1]) for k, m in fetch_model.MODELS.items() if k not in fetch_model.DIRECT_FILES}
+DIRECT_URLS = {fetch_model.file_url("hinglish", name): name for name in fetch_model.DIRECT_FILES["hinglish"]}
 tampered = set()      # languages whose download is swapped for a different file
 
 
@@ -63,12 +64,18 @@ class Answer(io.BytesIO):
 
 def fake_open(url, timeout=None):
     downloads.append(url)
+    if url in DIRECT_URLS:
+        return Answer(("test-model-" + DIRECT_URLS[url]).encode())
     lang = next(k for k, m in fetch_model.MODELS.items() if m[2] == url)
     return Answer(ARCHIVES[lang] + (b"changed" if lang in tampered else b""))
 
 
 # ---- the list of models, and where Arabic comes from
-check("English and Arabic are known", sorted(fetch_model.MODELS), ["ar", "en"])
+check("English, Arabic and Hinglish are known (no separate Hindi option)", sorted(fetch_model.MODELS), ["ar", "en", "hinglish"])
+check("Hinglish uses the pinned Swift ONNX export", all("/resolve/9721eb7/" in fetch_model.file_url("hinglish", n)
+      for n in fetch_model.DIRECT_FILES["hinglish"]), True)
+check("Hinglish downloads only the two ONNX graphs and tokenizer",
+      fetch_model.DIRECT_FILES["hinglish"], ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"))
 check("Arabic is downloaded from its own address, not English's", fetch_model.MODELS["ar"][2] != fetch_model.MODELS["en"][2], True)
 check("Arabic's address names one fixed version of the file, not the latest",
       fetch_model.MODELS["ar"][2], lambda u: "/resolve/main/" not in u and re.search(r"/resolve/[0-9a-f]{40}/", u))
@@ -83,7 +90,9 @@ real_ar = fetch_model.MODELS["ar"]
 fetch_model.MODELS["ar"] = real_ar[:5] + (hashlib.sha256(ARCHIVES["ar"]).hexdigest(),)
 fetch_model.urllib.request.urlopen = fake_open
 check("each language has its own folder", fetch_model.folder("ar") != fetch_model.folder("en"), True)
-check("nothing is here to begin with", (fetch_model.status("en"), fetch_model.status("ar")), ("missing", "missing"))
+check("nothing is here to begin with",
+      (fetch_model.status("en"), fetch_model.status("ar"), fetch_model.status("hinglish")),
+      ("missing", "missing", "missing"))
 
 # ---- Arabic is never downloaded unless someone asks
 try:
@@ -101,8 +110,9 @@ check("...and so does loading the model for transcribing", ("Speech models" in s
 
 # ---- the routes: list, download, remove
 r = c.get("/api/speech").json()["models"]
-check("the page lists both languages with their size", [(m["lang"], m["state"], m["size_mb"] > 0) for m in r],
-      [("en", "missing", True), ("ar", "missing", True)])
+check("the page lists English, Arabic and Hinglish with their sizes",
+      [(m["lang"], m["state"], m["size_mb"] > 0) for m in r],
+      [("en", "missing", True), ("ar", "missing", True), ("hinglish", "missing", True)])
 check("an unknown language is refused", c.post("/api/speech/xx", headers=ORIGIN).status_code, 400)
 check("another website cannot start a download", c.post("/api/speech/ar", headers={"Origin": "https://evil.example"}).status_code, 403)
 check("...and nothing was downloaded", downloads, [])
@@ -137,11 +147,61 @@ check("a model in use is not removed", (c.delete("/api/speech/ar", headers=ORIGI
 transcribe._pool("ar").made -= 1
 check("Arabic can be removed when nothing uses it", (c.delete("/api/speech/ar", headers=ORIGIN).status_code, fetch_model.folder("ar").exists()), (200, False))
 
+# ---- Hinglish Swift download, use, timestamps, and removal
+downloads.clear()
+check("the owner can start the Hinglish download", c.post("/api/speech/hinglish", headers=ORIGIN).status_code, 200)
+for _ in range(100):
+    if fetch_model.status("hinglish") == "ready":
+        break
+    time.sleep(0.05)
+check("Hinglish arrives with all three Whisper files",
+      (fetch_model.ready("hinglish"), sorted(p.name for p in fetch_model.folder("hinglish").iterdir())),
+      (True, sorted(fetch_model.DIRECT_FILES["hinglish"])))
+check("the Hinglish download fetches exactly the three pinned files",
+      sorted(url.rsplit("/", 1)[-1] for url in downloads),
+      sorted(fetch_model.DIRECT_FILES["hinglish"]))
+check("the installed model is visible in API status", c.get("/api/status").json()["speech"]["hinglish"]["state"], "ready")
+
+# Exercise the actual Whisper loader configuration without downloading or loading 160 MB during the test.
+hd = fetch_model.folder("hinglish")
+class FakeWhisperRecognizer:
+    @staticmethod
+    def from_whisper(**kwargs):
+        return kwargs
+class FakeSherpa:
+    OfflineRecognizer = FakeWhisperRecognizer
+for filename in fetch_model.DIRECT_FILES["hinglish"]:
+    (hd / filename).write_bytes(b"test-model")
+old_sherpa = transcribe._sherpa
+transcribe._sherpa = lambda: FakeSherpa
+try:
+    whisper_config = transcribe._new("hinglish")
+finally:
+    transcribe._sherpa = old_sherpa
+check("Hinglish uses Whisper with Roman-script English token and word timestamps",
+      (whisper_config["language"], whisper_config["task"], whisper_config["enable_token_timestamps"]),
+      ("en", "transcribe", True))
+whisper_words = transcribe._words(["Hello", " there", "!", " how", " are", " you"],
+                                  [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], 0, 32000)
+check("Whisper's space-prefixed pieces become correctly separated words",
+      [w["w"] for w in whisper_words], ["Hello", "there!", "how", "are", "you"])
+
+transcribe._pool("hinglish").made += 1
+check("a Hinglish model in use is not removed",
+      (c.delete("/api/speech/hinglish", headers=ORIGIN).status_code, fetch_model.ready("hinglish")),
+      (409, True))
+transcribe._pool("hinglish").made -= 1
+check("Hinglish can be removed and its files are deleted",
+      (c.delete("/api/speech/hinglish", headers=ORIGIN).status_code, fetch_model.folder("hinglish").exists()),
+      (200, False))
+
 # ---- choosing the language
 check("a video can be marked as Arabic", jobs.clean_options({"lang": "ar"}), {"lang": "ar"})
+check("a video can be marked as Hinglish", jobs.clean_options({"lang": "hinglish"}), {"lang": "hinglish"})
 check("an unknown language becomes English", jobs.clean_options({"lang": "xx"}), {"lang": "en"})
 check("videos are English unless chosen", jobs.DEFAULTS["lang"], "en")
 check("a creator can speak Arabic", creators._clean({"lang": "ar"}), {"lang": "ar"})
+check("a creator can speak Hinglish", creators._clean({"lang": "hinglish"}), {"lang": "hinglish"})
 check("...but not a made-up language", creators._clean({"lang": "<b>"}), {"lang": "en"})
 r = c.post("/api/creators", json={"name": "Arabic speaker"}, headers=ORIGIN)
 cid = r.json()["id"]

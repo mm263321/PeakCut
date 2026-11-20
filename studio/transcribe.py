@@ -169,6 +169,20 @@ def _new(lang: str = fetch_model.DEFAULT):
     # someone asks for them; here we only wait for a download already running.
     fetch_model.ensure(lang, start=lang == fetch_model.DEFAULT)
     d = fetch_model.folder(lang)
+    if lang == "hinglish":
+        # This fine-tune writes Hindi-English mixed speech directly in Roman letters.
+        # Its training/export uses the English Whisper token; attention outputs provide word timing.
+        return sherpa_onnx.OfflineRecognizer.from_whisper(
+            encoder=str(d / "encoder.int8.onnx"),
+            decoder=str(d / "decoder.int8.onnx"),
+            tokens=str(d / "tokens.txt"),
+            language="en",
+            task="transcribe",
+            num_threads=THREADS,
+            decoding_method="greedy_search",
+            provider=PROVIDER,
+            enable_token_timestamps=True,
+        )
     return sherpa_onnx.OfflineRecognizer.from_transducer(
         **_model_files(d),
         tokens=str(d / "tokens.txt"),
