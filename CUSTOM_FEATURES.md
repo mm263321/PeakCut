@@ -37,3 +37,21 @@ This first phase edits an individual existing clip. It does not yet add custom l
 3. Resolve shared-file changes without dropping custom modules.
 4. Run \`python tests/run.py\` and manually test the custom editor, live recording and exports.
 5. Push changes only to \`custom-features\` until verified.
+
+## Phase 2: native 1080p / 2K / 4K exports
+
+The source-download ceiling and final export size are separate settings.
+
+- Home → Options → Maximum source download: 720p, 1080p or the highest available up to 2160p (4K).
+- Home → Options → Export resolution: 1080p (1080×1920), 2K-class (1440×2560) or 4K (2160×3840).
+- Home → Options → Video encoder: H.264, HEVC/H.265 or AV1.
+- Home → Options → Export quality: Balanced, High quality or Maximum quality.
+- Individual clip editor → Export settings: each clip can override the job's export resolution, encoder and quality when re-rendering.
+
+studio/export_settings.py validates the choices, detects FFmpeg encoders and tries NVIDIA NVENC first when listed. If a hardware encoder is listed but fails at runtime, it tries another encoder for the same selected codec. It does not silently change HEVC or AV1 into H.264.
+
+studio/render.py builds the composition and caption coordinates at the selected output dimensions. A lower-resolution source can be upscaled to the requested output dimensions, but upscaling cannot restore detail that is not present in the source.
+
+Existing single MP4 downloads, bulk ZIP downloads, clip history and the 1080p export default remain supported. The default source-download ceiling is now 2160p; uploaded files are not re-downloaded or altered before clipping.
+
+Test: tests/test_export_settings.py checks settings validation, codec fallback order, quality profiles and real 1080p/2K/4K MP4 renders.
