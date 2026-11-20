@@ -62,6 +62,7 @@ def main() -> int:
                 ("the new-version notice", ["tests/test_updates.py"]),
                 ("no limits by default", ["tests/test_limits.py"]),
                 ("captions never overlap, stuck clips, sentence endings", ["tests/test_stuck.py"]),
+                ("custom 16:9 source crops and 9:16 composition", ["tests/test_custom_layout.py"]),
                 ("ad breaks and frozen screens", ["tests/test_static.py"]),
                 ("answers that are not quite right", ["tests/test_answer.py"]),
                 ("waiting out AI rate limits", ["tests/test_retry.py"]),
