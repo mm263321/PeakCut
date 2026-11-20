@@ -32,9 +32,9 @@
     ".pc-source-help{font-size:12px;color:var(--dim);line-height:1.4}" +
     ".pc-source-play{display:flex;gap:8px;align-items:center}.pc-source-play input{min-width:0;flex:1}" +
     ".pc-output-wrap{display:flex;justify-content:center;min-width:0}" +
-    ".pc-output-canvas{width:min(100%,280px);height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
+    ".pc-output-canvas{width:min(100%,360px);height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
     ".pc-output-canvas:active{cursor:grabbing}.pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
-    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-canvas{width:min(70%,280px)}}";
+    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-canvas{width:min(70%,360px)}}";
   document.head.append(style);
 
   const presets = {
