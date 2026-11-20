@@ -608,10 +608,10 @@ dialog::backdrop{background:rgba(14,12,11,.42);animation:fadein .16s ease}
 .dlg{padding:24px;width:450px;max-width:100%;display:flex;flex-direction:column;gap:14px}
 .dlg h2{font-size:18px;font-weight:600;color:var(--brand-ink)}
 .dlg-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
-.editor{display:grid;grid-template-columns:minmax(320px,.78fr) minmax(0,1.22fr);width:100%;max-height:calc(100vh - 24px);overflow:hidden}
-.editor .stage{background:#17110E;display:grid;place-items:center;position:relative;min-width:0;min-height:420px;overflow:hidden}
+.editor{display:grid;grid-template-columns:minmax(320px,.78fr) minmax(0,1.22fr);grid-template-rows:minmax(0,1fr);width:100%;height:min(980px,calc(100vh - 24px));max-height:calc(100vh - 24px);overflow:hidden}
+.editor .stage{background:#17110E;display:grid;place-items:center;position:relative;min-width:0;min-height:0;height:100%;overflow:hidden}
 .editor video,.editor .stage img{width:100%;max-height:calc(100vh - 24px);aspect-ratio:9/16;object-fit:contain;display:block}
-.editor .panel{padding:28px;min-width:0;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.editor .panel{padding:28px;min-width:0;min-height:0;height:100%;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin;display:flex;flex-direction:column;gap:16px}
 .editor h3{font-size:13px;font-weight:600;color:var(--dim);margin-top:6px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 #toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:8px;z-index:50}
@@ -761,10 +761,10 @@ dialog[open]{animation:fadein .16s ease}
   .hero{padding:32px 16px 40px}
   .content{padding:20px 16px 56px}
   #clipdlg{width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100vh - 16px)}
-  .editor{grid-template-columns:1fr;width:100%;max-height:calc(100vh - 16px);overflow:auto}
-  .editor .stage{min-height:220px;max-height:52vh}
+  .editor{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;width:100%;height:auto;max-height:calc(100vh - 16px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+  .editor .stage{height:auto;min-height:220px;max-height:52vh}
   .editor video{max-height:52vh}
-  .editor .panel{padding:18px}
+  .editor .panel{height:auto;min-height:0;overflow:visible;padding:18px}
 }
 @media (max-width:560px){.composer-bar .btn.primary{width:100%;height:42px}.topbar #actions .btn{height:34px;padding:0 10px;font-size:13px}.topbar h1{font-size:17px}.hero{padding:40px 14px 28px}.hero h2{font-size:26px}.hint{display:none}.tiles{gap:10px}.tile{padding:14px}.two{grid-template-columns:1fr}}
 /* ---------- guided tour: dims the page, cuts a soft-moving hole around what each step talks about */
@@ -2627,6 +2627,6 @@ $("#main").addEventListener("scroll", () => $(".topbar").classList.toggle("stuck
   setInterval(async () => { try { S.status = await api("/api/status"); drawShell(); if (S.view === "overview") drawOverview(); checkNew(); } catch {} }, 15000);
 })();
 </script>
-<script src="/assets/custom-layout.js?v=4"></script>
+<script src="/assets/custom-layout.js?v=5"></script>
 </body>
 </html>
