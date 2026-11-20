@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import hmac
 import ipaddress
+import mimetypes
 import json
 import os
 import re
@@ -1011,6 +1012,17 @@ def _clip_or_404(jid: str, cid: str):
     if not clip:
         raise HTTPException(404, "No such clip")
     return job, clip
+
+
+@app.get("/api/jobs/{jid}/clips/{cid}/source")
+def clip_source(jid: str, cid: str):
+    """Stream the original source (or saved source piece for a long/live clip) to the clip editor."""
+    job, clip = _clip_or_404(jid, cid)
+    source = Path(str(clip.get("src") or job.get("source_path") or ""))
+    if not source.is_file() or source.suffix.lower() not in VIDEO_TYPES:
+        raise HTTPException(409, "The original source for this clip is no longer available.")
+    return FileResponse(source, media_type=mimetypes.guess_type(source.name)[0] or "application/octet-stream",
+                        headers={"Cache-Control": "private, no-store"})
 
 
 @app.put("/api/jobs/{jid}/clips/{cid}/text")
