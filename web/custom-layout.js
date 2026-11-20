@@ -83,7 +83,20 @@
       const dx = frame[0]*w, dy = frame[1]*h, dw = frame[2]*w, dh = frame[3]*h;
       if (ready && src) {
         try {
-          ctx.drawImage(video, src[0]*vw, src[1]*vh, src[2]*vw, src[3]*vh, dx, dy, dw, dh);
+          // Match FFmpeg's scale-to-fill then centre-crop behaviour, so the preview
+          // shows the same crop as the exported clip.
+          let sx = src[0]*vw, sy = src[1]*vh, sw = src[2]*vw, sh = src[3]*vh;
+          const targetRatio = dw / Math.max(1, dh), sourceRatio = sw / Math.max(1, sh);
+          if (sourceRatio > targetRatio) {
+            const croppedWidth = sh * targetRatio;
+            sx += (sw - croppedWidth) / 2;
+            sw = croppedWidth;
+          } else {
+            const croppedHeight = sw / targetRatio;
+            sy += (sh - croppedHeight) / 2;
+            sh = croppedHeight;
+          }
+          ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
         } catch {
           ctx.fillStyle = "#28211c"; ctx.fillRect(dx, dy, dw, dh);
         }
