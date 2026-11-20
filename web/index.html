@@ -1936,9 +1936,9 @@ function drawCreatorForm() {
         <label class="f">Minutes of live stream to keep<input data-k="buffer_min" type="number" value="\${c.buffer_min}"></label></div></div>
     <div class="card"><h2>Live export settings</h2><p class="help">These preferences are applied automatically to every new live clip from this creator: AI highlights, manual 30/60-second clips and trigger-word clips. Changes during a live session apply to the next clip.</p>
       <div class="fields">
-        <label class="f">Output resolution<select data-k="export_resolution">\${opts({"1080p":"1080p · 1080 × 1920","2k":"2K-class · 1440 × 2560","4k":"4K · 2160 × 3840"}, c.export_resolution || "1080p")}</select></label>
-        <label class="f">Video encoder<select data-k="export_encoder">\${opts({h264:"H.264 · best compatibility",hevc:"HEVC · smaller files",av1:"AV1 · efficient compression"}, c.export_encoder || "h264")}</select></label>
-        <label class="f">Export quality<select data-k="export_quality">\${opts({balanced:"Balanced",high:"High quality",maximum:"Maximum quality"}, c.export_quality || "balanced")}</select></label>
+        <label class="f">Output resolution<select data-k="export_resolution">${opts({"1080p":"1080p · 1080 × 1920","2k":"2K-class · 1440 × 2560","4k":"4K · 2160 × 3840"}, c.export_resolution || "1080p")}</select></label>
+        <label class="f">Video encoder<select data-k="export_encoder">${opts({h264:"H.264 · best compatibility",hevc:"HEVC · smaller files",av1:"AV1 · efficient compression"}, c.export_encoder || "h264")}</select></label>
+        <label class="f">Export quality<select data-k="export_quality">${opts({balanced:"Balanced",high:"High quality",maximum:"Maximum quality"}, c.export_quality || "balanced")}</select></label>
       </div>
       <p class="help">NVIDIA NVENC is preferred when available. PeakCut falls back to another encoder for the same codec if necessary. Changing these settings does not alter clips already exported.</p></div>
     <div class="card"><h2>Posting</h2><p class="help">${A.length ? "Choose the accounts this creator's clips go to. One account can be shared by several creators." : "No accounts are connected yet. Connect one in Settings, then come back."}</p>
