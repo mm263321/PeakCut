@@ -17,24 +17,24 @@
     ".pc-custom-layout{margin:14px 0;padding:14px;border:1px solid var(--line-2);border-radius:14px;background:var(--muted);display:grid;gap:14px}" +
     ".pc-custom-layout[hidden]{display:none!important}" +
     ".pc-layout-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.pc-layout-head h3{margin:0}" +
-    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(150px,.75fr);gap:14px;align-items:start}" +
+    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}" +
     ".pc-layout-section{min-width:0;display:grid;gap:9px}.pc-layout-section h4{margin:0;font-size:13px}" +
     ".pc-layout-tools,.pc-layout-presets{display:flex;flex-wrap:wrap;gap:6px}" +
     ".pc-layout-tools button,.pc-layout-presets button{font-size:12px;padding:7px 9px}" +
     ".pc-layout-tools button.on,.pc-layout-presets button.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep)}" +
-    ".pc-source-stage{position:relative;width:100%;aspect-ratio:16/9;background:#171310;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;touch-action:none}" +
+    ".pc-source-stage{position:relative;width:100%;max-width:100%;aspect-ratio:16/9;background:#171310;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;touch-action:none}" +
     ".pc-source-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:#171310}" +
     ".pc-source-overlay{position:absolute;inset:0;touch-action:none;cursor:crosshair}" +
-    ".pc-source-box{position:absolute;border:2px solid #20d7cf;background:rgba(32,215,207,.12);box-sizing:border-box;pointer-events:auto}" +
+    ".pc-source-box{position:absolute;border:3px solid #20d7cf;background:rgba(32,215,207,.12);box-sizing:border-box;pointer-events:auto}" +
     ".pc-source-box.gameplay{border-color:#ff9b43;background:rgba(255,155,67,.10)}" +
-    ".pc-source-box span{position:absolute;left:0;top:0;max-width:100%;padding:2px 4px;background:#111d;color:#fff;font-size:10px;white-space:nowrap}" +
-    ".pc-handle{position:absolute;right:-5px;bottom:-5px;width:12px;height:12px;border-radius:3px;background:#fff;border:1px solid #222;cursor:nwse-resize}" +
+    ".pc-source-box span{position:absolute;left:0;top:0;max-width:100%;padding:3px 6px;background:#111d;color:#fff;font-size:12px;white-space:nowrap}" +
+    ".pc-handle{position:absolute;right:-7px;bottom:-7px;width:16px;height:16px;border-radius:3px;background:#fff;border:1px solid #222;cursor:nwse-resize}" +
     ".pc-source-help{font-size:12px;color:var(--dim);line-height:1.4}" +
     ".pc-source-play{display:flex;gap:8px;align-items:center}.pc-source-play input{min-width:0;flex:1}" +
     ".pc-output-wrap{display:flex;justify-content:center;min-width:0}" +
-    ".pc-output-canvas{width:min(100%,230px);height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
-    ".pc-output-canvas:active{cursor:grabbing}.pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-message.bad{color:var(--bad)}" +
-    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-canvas{width:min(70%,230px)}}";
+    ".pc-output-canvas{width:min(100%,280px);height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
+    ".pc-output-canvas:active{cursor:grabbing}.pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
+    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-canvas{width:min(70%,280px)}}";
   document.head.append(style);
 
   const presets = {
