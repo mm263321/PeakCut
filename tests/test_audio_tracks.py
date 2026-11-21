@@ -29,6 +29,19 @@ formats = [
     {"acodec": "opus", "vcodec": "none", "language": "bad code", "format_note": "Unsafe"},
 ]
 tracks = media.audio_tracks(formats)
+resolution_formats = [
+    {"acodec": "opus", "vcodec": "none", "width": 7680, "height": 4320},
+    {"acodec": "none", "vcodec": "avc1", "width": 1920, "height": 1080},
+    {"acodec": "none", "vcodec": "vp9", "width": 2560, "height": 1440},
+]
+check("maximum source resolution ignores audio-only formats and finds the highest video format",
+      media.max_video_resolution(resolution_formats) == "1440p")
+check("portrait source resolution uses its shorter dimension",
+      media.max_video_resolution([{"vcodec": "avc1", "width": 1080, "height": 1920}]) == "1080p")
+check("source resolution falls back to the video's reported dimensions",
+      media.max_video_resolution([], 1920, 1080) == "1080p")
+check("unknown source resolution stays unavailable",
+      media.max_video_resolution([]) is None)
 check("only audio formats with valid language codes are listed",
       [x["code"] for x in tracks] == ["en", "hi", "pt-BR"])
 check("duplicate audio formats do not duplicate the same language",
