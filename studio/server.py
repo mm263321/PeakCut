@@ -1050,27 +1050,12 @@ def candidate_preview(jid: str, cid: str):
     if not preview.is_file():
         start = max(0.0, float(clip.get("start") or 0))
         duration = min(18.0, max(3.0, float(clip.get("end") or 0) - start))
-        if job.get("source", {}).get("type") == "url":
-            try:
-                generated = media.download_section(job["source"]["url"], folder, f"{cid}.preview", start,
-                                                start + duration, height=480, exact=False,
-                                                audio_language=job.get("options", {}).get("audio_language") or None)
-                if Path(generated).resolve() != preview.resolve():
-                    subprocess.run([
-                        "ffmpeg", "-y", "-v", "error", "-i", str(generated), "-vf", "scale=-2:480",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
-                        "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview)
-                    ], check=True, capture_output=True, timeout=90)
-                    Path(generated).unlink(missing_ok=True)
-            except Exception as e:  # noqa: BLE001
-                raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
-        else:
-            source = Path(str(job.get("source_path") or job.get("source", {}).get("path") or ""))
-            if not source.is_file():
-                raise HTTPException(409, "The uploaded source is no longer available.")
+        source = Path(str(clip.get("src") or job.get("source_path") or job.get("source", {}).get("path") or ""))
+        local_start = max(0.0, start - float(clip.get("src_offset") or 0)) if clip.get("src") else start
+        if source.is_file():
             try:
                 subprocess.run([
-                    "ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-i", str(source),
+                    "ffmpeg", "-y", "-v", "error", "-ss", f"{local_start:.2f}", "-i", str(source),
                     "-t", f"{duration:.2f}", "-vf", "scale=-2:480", "-c:v", "libx264",
                     "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview)
@@ -1081,6 +1066,22 @@ def candidate_preview(jid: str, cid: str):
             except (OSError, subprocess.CalledProcessError) as e:
                 preview.unlink(missing_ok=True)
                 raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
+        elif job.get("source", {}).get("type") == "url":
+            try:
+                generated = media.download_section(job["source"]["url"], folder, f"{cid}.preview", start,
+                                                    start + duration, height=480, exact=False,
+                                                    audio_language=job.get("options", {}).get("audio_language") or None)
+                if Path(generated).resolve() != preview.resolve():
+                    subprocess.run([
+                        "ffmpeg", "-y", "-v", "error", "-i", str(generated), "-vf", "scale=-2:480",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview)
+                    ], check=True, capture_output=True, timeout=90)
+                    Path(generated).unlink(missing_ok=True)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
+        else:
+            raise HTTPException(409, "The original source for this preview is no longer available.")
     if not preview.is_file() or preview.stat().st_size > 50 * 1024 * 1024:
         preview.unlink(missing_ok=True)
         raise HTTPException(422, "The preview is unavailable or too large.")
