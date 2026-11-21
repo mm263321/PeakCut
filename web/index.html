@@ -2002,7 +2002,7 @@ function reviewHtml(j) {
   if (!candidates.length) return "";
   const selected = reviewSelectionFor(j), max = Number(j.options?.max_clips) || 6;
   return `<section class="review-panel" aria-label="Review AI clip candidates">
-    <div class="review-head"><div><h4>Review AI-selected moments</h4><p>Found ${candidates.length} potential clips. Choose up to ${max} to render. Nothing has been fully rendered yet.</p></div></div>
+    <div class="review-head"><div><h4>Review AI-selected moments</h4><p>Found ${candidates.length} potential clips. Choose up to ${max} to render. Previews are up to 18 seconds at 480p; final clips use your export settings.</p></div></div>
     <div class="review-actions">
       <button class="btn sm" data-act="reviewall" data-j="${j.id}">Select top ${Math.min(max,candidates.length)} scores</button>
       <button class="btn sm" data-act="reviewclear" data-j="${j.id}">Clear selection</button>
