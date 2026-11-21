@@ -109,7 +109,42 @@ def _ydl(opts):
                              "concurrent_fragment_downloads": 4, **cookie_opts(), **opts})
 
 
-def _video_format(height):
+def audio_tracks(formats) -> list:
+    """Unique selectable audio languages advertised by the site's downloadable formats."""
+    found = {}
+    for item in formats or []:
+        if item.get("acodec") in (None, "none"):
+            continue
+        language = str(item.get("language") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+){0,3}", language) or len(language) > 35:
+            continue
+        note = str(item.get("format_note") or "").strip()
+        label = re.split(r",\s*(?:low|medium|high|ultra|tiny|small|large|\d{2,4}p)\b", note, maxsplit=1, flags=re.I)[0].strip()
+        if not label:
+            label = language
+        current = found.get(language)
+        if current is None or len(label) > len(current):
+            found[language] = label
+    return [{"code": code, "label": label} for code, label in found.items()]
+
+
+def _audio_format(audio_language=None):
+    """Choose the requested dubbed audio, or preserve the current best/default selection."""
+    if audio_language:
+        if not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+){0,3}", str(audio_language)) or len(str(audio_language)) > 35:
+            raise ValueError("That audio language is not valid.")
+        return f"ba[language={audio_language}][ext=m4a]/ba[language={audio_language}]"
+    return "ba[ext=m4a]/ba/worst"
+
+
+def _video_format(height, audio_language=None):
+    if audio_language:
+        audio = f"ba[language={audio_language}]"
+        audio_m4a = f"{audio}[ext=m4a]"
+        video = f"bv[height<={height}]"
+        avc = f"{video}[vcodec^=avc1]"
+        combined = f"b[height<={height}][language={audio_language}]"
+        return f"{avc}+{audio_m4a}/{avc}+{audio}/{video}+{audio}/{combined}"
     return f"bv*[height<={height}][vcodec^=avc1]+ba[ext=m4a]/bv*[height<={height}]+ba/b[height<={height}]/b"
 
 
@@ -127,7 +162,8 @@ def info(url: str) -> dict:
         i = ydl.extract_info(url, download=False)
     return {"title": i.get("title") or "", "uploader": i.get("uploader") or i.get("channel") or "",
             "duration": float(i.get("duration") or 0), "is_live": bool(i.get("is_live")),
-            "thumbnail": i.get("thumbnail") or "", "kind": i.get("_type") or "video"}
+            "thumbnail": i.get("thumbnail") or "", "kind": i.get("_type") or "video",
+            "audio_tracks": audio_tracks(i.get("formats") or [])}
 
 
 def youtube_words(url: str):
@@ -222,7 +258,7 @@ def preview(url: str) -> dict:
         except Exception:
             thumb = ""
     out = {"title": i["title"][:200], "uploader": i["uploader"][:120], "duration": i["duration"],
-           "is_live": i["is_live"], "thumb": thumb}
+           "is_live": i["is_live"], "thumb": thumb, "audio_tracks": i.get("audio_tracks") or []}
     if len(_PREVIEWS) > 300:
         _PREVIEWS.pop(next(iter(_PREVIEWS)))
     _PREVIEWS[url] = out
@@ -251,33 +287,34 @@ def save_thumb(job_dir: Path, url: str = "", video: Path = None) -> bool:
     return False
 
 
-def download_audio(url: str, job_dir: Path, on_progress=None) -> Path:
+def download_audio(url: str, job_dir: Path, on_progress=None, audio_language=None) -> Path:
     """Audio only: a few seconds even for long videos, and all the AI needs to pick clips."""
     def hook(d):
         total = d.get("total_bytes") or d.get("total_bytes_estimate")
         if on_progress and d.get("status") == "downloading" and total:
             on_progress(d.get("downloaded_bytes", 0) / total)
 
-    with _youtube_guard(url), _ydl({"format": "ba[ext=m4a]/ba/worst", "outtmpl": str(job_dir / "audio_src.%(ext)s"),
+    with _youtube_guard(url), _ydl({"format": _audio_format(audio_language), "outtmpl": str(job_dir / "audio_src.%(ext)s"),
                "progress_hooks": [hook]}) as ydl:
         ydl.download([url])
     return _biggest(job_dir, "audio_src")
 
 
-def download(url: str, job_dir: Path, height=2160) -> Path:
+def download(url: str, job_dir: Path, height=2160, audio_language=None) -> Path:
     """The whole video. Used for shorter videos, where this is quicker than fetching pieces."""
-    with _youtube_guard(url), _ydl({"format": _video_format(height), "merge_output_format": "mp4",
+    with _youtube_guard(url), _ydl({"format": _video_format(height, audio_language), "merge_output_format": "mp4",
                                     "outtmpl": str(job_dir / "source.%(ext)s")}) as ydl:
         ydl.download([url])
     return _biggest(job_dir, "source")
 
 
-def download_section(url: str, out_dir: Path, stem: str, start: float, end: float, height=2160, exact=False) -> Path:
+def download_section(url: str, out_dir: Path, stem: str, start: float, end: float, height=2160, exact=False,
+                     audio_language=None) -> Path:
     """Just one stretch of the video. The cut lands on a keyframe, so find_offset() pins the true start; with
     exact=True the cut is made at exactly `start` instead (slower), for when there is nothing to match against."""
     from yt_dlp.utils import download_range_func
     out_dir.mkdir(parents=True, exist_ok=True)
-    opts = {"format": _video_format(height), "merge_output_format": "mp4", "outtmpl": str(out_dir / (stem + ".%(ext)s")),
+    opts = {"format": _video_format(height, audio_language), "merge_output_format": "mp4", "outtmpl": str(out_dir / (stem + ".%(ext)s")),
             "download_ranges": download_range_func(None, [(max(0.0, start), end)])}
     if exact:
         opts["force_keyframes_at_cuts"] = True

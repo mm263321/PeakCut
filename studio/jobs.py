@@ -111,7 +111,7 @@ on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first f
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160,
             "clip_method": "peakcut", **export_settings.DEFAULTS,
             "range_start": None, "range_end": None, "captions": True, "hook_text": "", "description_text": "",
-            "lang": "en", "filter": "original", "filter_strength": 70}   # lang: the language spoken
+            "lang": "en", "filter": "original", "filter_strength": 70, "audio_language": ""}   # lang: the language spoken
 
 
 LIMITS = {"max_clips": (1, 20), "min_len": (5, 120), "max_len": (10, 180), "quality": (360, 2160)}
@@ -137,6 +137,10 @@ def clean_options(options) -> dict:
         elif k in export_settings.DEFAULTS:
             out[k] = export_settings.clean({k: v})[k]
             continue
+        elif k == "audio_language":
+            v = str(v).strip()
+            if v and (len(v) > 35 or not re.fullmatch(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+){0,3}", v)):
+                raise ValueError("That audio language is not valid.")
         elif k == "filter":
             v = v if v in render.FILTER_PRESETS else DEFAULTS["filter"]
         elif k == "filter_strength":
@@ -612,7 +616,8 @@ def _piece_again(job, clip):
     until = clip["end"] + PAD if not job.get("duration") else min(job["duration"], clip["end"] + PAD)
     try:
         piece = media.download_section(src["url"], d / "clips", f"{clip['id']}.src", want, until,
-                                       int(job["options"]["quality"]), exact=True)
+                                       int(job["options"]["quality"]), exact=True,
+                                       audio_language=job["options"].get("audio_language") or None)
         meta = media.probe(piece)
     except Exception as e:  # noqa: BLE001
         raise RuntimeError(f"Could not fetch this part of the video: {safe.friendly(e, 250)}") from e
@@ -629,7 +634,8 @@ def _fetch_piece(job, clip, full_audio):
     try:
         want = max(0.0, clip["start"] - PAD)
         piece = media.download_section(job["source"]["url"], d / "clips", f"{clip['id']}.src", want,
-                                       min(job["duration"], clip["end"] + PAD), int(o["quality"]))
+                                       min(job["duration"], clip["end"] + PAD), int(o["quality"]),
+                                       audio_language=o.get("audio_language") or None)
         wav = d / "clips" / f"{clip['id']}.wav"
         media.extract_audio(piece, wav)
         part = media.load_audio(wav)
@@ -708,13 +714,17 @@ def _run_job(job):
         _set(job, stage="Getting the speech model (one time, about 480 MB)")
         fetch_model.ensure()
         _set(job, stage="Getting the audio")
-    could_borrow = src["type"] == "url" and config.YT_TRANSCRIPT and media.is_youtube(src["url"])
+    could_borrow = (src["type"] == "url" and config.YT_TRANSCRIPT and media.is_youtube(src["url"])
+                    and not o.get("audio_language"))
     if speech != fetch_model.DEFAULT and not transcribe.REMOTE and not could_borrow and fetch_model.status(speech) == "missing":
         fetch_model.ensure(speech, start=False)      # says what to do, before any time is spent on the download
     fetch = ThreadPoolExecutor(1)
     video = None
     if src["type"] == "url":
         meta = media.info(src["url"])
+        audio_language = o.get("audio_language") or None
+        if audio_language and audio_language not in {track["code"] for track in meta.get("audio_tracks") or []}:
+            raise RuntimeError("The selected dubbed audio track is no longer available. Paste the video link again and choose an available track.")
         if meta["kind"] != "video":
             raise RuntimeError("That link is a channel or playlist, not a single video. Paste the link of one video.")
         if ((o["range_end"] or meta["duration"]) - (o["range_start"] or 0)) > config.MAX_VIDEO_HOURS * 3600:
@@ -729,7 +739,7 @@ def _run_job(job):
         span = (o["range_end"] or meta["duration"]) - (o["range_start"] or 0)
         pieces = span > LONG_VIDEO or meta["duration"] <= 0
         if not pieces:  # shorter video: fetch all of it in the background while the audio is worked on
-            video = fetch.submit(media.download, src["url"], d, int(o["quality"]))
+            video = fetch.submit(media.download, src["url"], d, int(o["quality"]), audio_language)
         seen = [-1.0]
 
         def got(p):                       # the bar moves in whole percents: no need to save the file a hundred times a second
@@ -737,7 +747,7 @@ def _run_job(job):
                 seen[0] = p
                 _set(job, progress=0.03 + 0.1 * p)
 
-        audio_file = media.download_audio(src["url"], d, got)
+        audio_file = media.download_audio(src["url"], d, got, audio_language=audio_language)
     else:
         pieces, audio_file = False, Path(src["path"])
         info = media.probe(audio_file)
@@ -771,7 +781,7 @@ def _run_job(job):
                 except Exception as e:  # noqa: BLE001 - sites sometimes refuse a download
                     notes.append(f"Video download refused once ({str(e)[-80:]}), retrying")
                     try:
-                        path = media.download(src["url"], d, int(o["quality"]))
+                        path = media.download(src["url"], d, int(o["quality"]), audio_language)
                     except Exception as e2:  # noqa: BLE001
                         notes.append(f"Whole-video download failed ({str(e2)[-80:]}), fetching clip parts instead")
                 if path:
@@ -880,7 +890,8 @@ def _run_job(job):
     words, tokens, model = [], 0, None
     done_blocks = 0
     yt = None
-    if src["type"] == "url" and config.YT_TRANSCRIPT and media.is_youtube(src["url"]):
+    if (src["type"] == "url" and config.YT_TRANSCRIPT and media.is_youtube(src["url"])
+            and not o.get("audio_language")):
         try:
             yt = media.youtube_words(src["url"])
         except Exception:  # noqa: BLE001 - no transcript to borrow: ours is written as usual
