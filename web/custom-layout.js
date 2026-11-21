@@ -17,7 +17,7 @@
     ".pc-custom-layout{margin:14px 0;padding:14px;border:1px solid var(--line-2);border-radius:14px;background:var(--muted);display:grid;gap:14px}" +
     ".pc-custom-layout[hidden]{display:none!important}" +
     ".pc-layout-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.pc-layout-head h3{margin:0}" +
-    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(190px,.8fr);gap:14px;align-items:start}" +
+    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,.95fr);gap:16px;align-items:start}" +
     ".pc-layout-section{min-width:0;display:grid;gap:9px}.pc-layout-section h4{margin:0;font-size:13px}" +
     ".pc-layout-tools,.pc-layout-presets{display:flex;flex-wrap:wrap;gap:6px}" +
     ".pc-layout-tools button,.pc-layout-presets button{font-size:12px;padding:7px 9px}" +
@@ -32,7 +32,7 @@
     ".pc-source-help{font-size:12px;color:var(--dim);line-height:1.4}" +
     ".pc-source-play{display:flex;gap:8px;align-items:center}.pc-source-play input{min-width:0;flex:1}" +
     ".pc-output-wrap{display:flex;justify-content:center;min-width:0}" +
-    ".pc-output-stage{position:relative;width:min(100%,190px);min-width:0;line-height:0}" +
+    ".pc-output-stage{position:relative;width:min(100%,260px);min-width:0;line-height:0}" +
     ".pc-output-canvas{width:100%;height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
     ".pc-output-canvas:active{cursor:grabbing}" +
     ".pc-output-guides{position:absolute;inset:0;pointer-events:none}" +
@@ -41,7 +41,7 @@
     ".pc-output-guide span{position:absolute;left:3px;top:3px;padding:2px 5px;background:#111d;color:#fff;font:10px/1.2 sans-serif;white-space:nowrap}" +
     ".pc-output-guide i{position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:#fff;border:1px solid #222}" +
     ".pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
-    "@media(max-width:900px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(100%,190px)}}";
+    "@media(max-width:900px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(100%,260px)}}";
   document.head.append(style);
 
   const presets = {
