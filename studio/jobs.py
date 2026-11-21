@@ -109,7 +109,7 @@ _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160,
-            "clip_method": "peakcut", **export_settings.DEFAULTS,
+            "clip_method": "peakcut", "review_before_render": True, **export_settings.DEFAULTS,
             "range_start": None, "range_end": None, "captions": True, "hook_text": "", "description_text": "",
             "lang": "en", "filter": "original", "filter_strength": 70, "audio_language": ""}   # lang: the language spoken
 
@@ -121,9 +121,10 @@ def clean_options(options) -> dict:
     """Only known settings, each inside its allowed range. Raises ValueError on nonsense."""
     out = {}
     for k, v in (options if isinstance(options, dict) else {}).items():
-        if k == "captions":
+        if k in ("captions", "review_before_render"):
             if not isinstance(v, bool):
-                raise ValueError("Captions must be on or off.")
+                label = "Captions" if k == "captions" else "Review before rendering"
+                raise ValueError(f"{label} must be on or off.")
             out[k] = v
             continue
         if k in ("hook_text", "description_text"):     # kept even when empty: it clears the creator's own text for this video
@@ -386,6 +387,71 @@ def delete(jid):
         ctx.bump(job["user"])
         shutil.rmtree(job["dir"], ignore_errors=True)
     return bool(job)
+
+
+def render_selected(jid: str, clip_ids: list):
+    """Approve a user's chosen AI candidates and queue only those clips for rendering."""
+    job = get(jid)
+    if not job:
+        raise ValueError("No such video.")
+    if job.get("status") != "review":
+        raise ValueError("This video is not waiting for clip review.")
+    candidates = [c for c in job.get("clips", []) if c.get("status") == "review"]
+    if not isinstance(clip_ids, list):
+        raise ValueError("Choose at least one clip.")
+    ids = list(dict.fromkeys(str(x) for x in clip_ids))
+    if not ids:
+        raise ValueError("Choose at least one clip to render.")
+    if len(ids) > int(job.get("options", {}).get("max_clips", DEFAULTS["max_clips"])):
+        raise ValueError(f"You can render up to {job.get('options', {}).get('max_clips', DEFAULTS['max_clips'])} clips from this video.")
+    available = {c["id"] for c in candidates}
+    if any(cid not in available for cid in ids):
+        raise ValueError("One of the selected clips is no longer available. Refresh the page and try again.")
+    selected = [c for c in candidates if c["id"] in set(ids)]
+    job["review_skipped"] = len(candidates) - len(selected)
+    job["clips"] = selected
+    for clip in selected:
+        clip.update(status="queued", error=None)
+    job["review_rendering"] = True
+    job["review_started"] = time.time()
+    job.update(status="running", stage="Rendering selected clips", progress=0.92, error=None)
+    save(job)
+    shutil.rmtree(Path(job["dir"]) / "previews", ignore_errors=True)
+    for clip in selected:
+        _q.put(("clip", jid, clip["id"]))
+    return job
+
+
+def _finish_review(job):
+    """Finish a review-mode video after all approved clips have rendered or failed."""
+    notice = None
+    with _lock:
+        if not job.get("review_rendering"):
+            return
+        clips = job.get("clips") or []
+        total = len(clips)
+        finished = sum(c.get("status") in ("done", "error") for c in clips)
+        job["progress"] = 0.92 + 0.08 * finished / max(1, total)
+        if finished < total:
+            job["stage"] = f"Rendering selected clips ({finished}/{total})"
+            save(job)
+            return
+        job["review_rendering"] = False
+        job["took"] = round(time.time() - float(job.get("review_started") or time.time()))
+        done = sum(c.get("status") == "done" for c in clips)
+        job.update(status="done", stage="Done" if done else "Done, but no selected clips could be made",
+                   progress=1.0, error=None)
+        notice = (job.get("user"), job.get("title") or job["source"].get("name") or "your video", done)
+        save(job)
+    if notice:
+        uid, name, done = notice
+        try:
+            from . import notices
+            notices.add(uid, "clips", f"{done} clip{'s' if done != 1 else ''} ready" if done else "No clips could be made",
+                        name, f"/app/creators/{job['creator']}" if job.get("creator") else "/app/videos")
+        except Exception:  # noqa: BLE001
+            pass
+        creators.log(job["creator"], f"Video finished with {done} selected clips in {job.get('took', 0)}s: {name}")
 
 
 def request_render(jid, cid, changes: dict):
@@ -701,6 +767,7 @@ def _run_job(job):
     if game and job.get("game") != game:
         job["game"] = game
     t0 = time.time()
+    review_mode = bool(o.get("review_before_render", True))
     notes = []
     face = False       # where the webcam is in the source, found once; False means not looked for yet
     usage.set_context(job["creator"], job["title"] or src.get("name"))
@@ -738,7 +805,9 @@ def _run_job(job):
         usage.set_context(job["creator"], meta["title"])
         span = (o["range_end"] or meta["duration"]) - (o["range_start"] or 0)
         pieces = span > LONG_VIDEO or meta["duration"] <= 0
-        if not pieces:  # shorter video: fetch all of it in the background while the audio is worked on
+        if not pieces and (not review_mode or o.get("clip_method") == "advanced"):
+            # In review mode, normal clipping waits to fetch video until the user approves a moment.
+            # Advanced AI still needs source frames for its visual judge.
             video = fetch.submit(media.download, src["url"], d, int(o["quality"]), audio_language)
         seen = [-1.0]
 
@@ -920,7 +989,7 @@ def _run_job(job):
             cut = blocks[done_blocks][0] / 16000
             words = [w for w in words if w["s"] < cut]
         for c in job["clips"]:            # clips found before the restart that were not finished yet
-            if c.get("status") not in ("done", "error"):
+            if c.get("status") not in ("done", "error", "review"):
                 c["status"] = "queued"
                 futures.append((renders.submit(ctx.bind(make), c, list(words)), c))
         save(job)
@@ -961,7 +1030,8 @@ def _run_job(job):
         words += [dict(w, s=round(w["s"] + shift, 2), e=round(w["e"] + shift, 2)) for w in bw]
         (d / "words.json").write_text(json.dumps(words), encoding="utf-8")
         _set(job, stage="Finding the best moments" + where, word_count=len(words))
-        left = int(o["max_clips"]) - len(job["clips"])
+        candidate_budget = int(o["max_clips"]) * (2 if review_mode else 1)
+        left = candidate_budget - len(job["clips"])
         if left <= 0 or len(bw) < 8:
             job["done_blocks"] = bi + 1
             save(job)
@@ -997,8 +1067,13 @@ def _run_job(job):
                     c["start"], c["end"] = round(c["start"] + shift, 2), round(c["end"] + shift, 2)
         for c in found:
             c.update(id=c.get("id") or f"clip{len(job['clips']) + 1:02d}", style=o["style"], layout=o["layout"],
-                     captions=o.get("captions", True), status="queued", version=0,
+                     captions=o.get("captions", True), status="review" if review_mode else "queued", version=0,
                      **export_settings.clean(o))
+            if review_mode:
+                c["transcript_preview"] = " ".join(
+                    str(w.get("w", "")) for w in words
+                    if c["start"] - 0.5 <= w.get("s", -1) <= c["end"] + 0.5
+                )[:360]
             if o.get("hook_text"):        # the person's own big text, on every clip, in place of the AI's
                 c["hook"] = o["hook_text"]
             if o.get("description_text"):  # ...and their own description, exactly as written
@@ -1012,7 +1087,8 @@ def _run_job(job):
             if face:
                 c["facecam"] = face
             job["clips"].append(c)
-            futures.append((renders.submit(ctx.bind(make), c, list(words)), c))
+            if not review_mode:
+                futures.append((renders.submit(ctx.bind(make), c, list(words)), c))
         job["ai"] = {"model": model, "tokens": tokens, "note": "", "log": notes[-5:]}
         job["done_blocks"] = bi + 1       # a restart from here on carries on with the next part
         save(job)
@@ -1031,6 +1107,11 @@ def _run_job(job):
     clips = job["clips"]
     job["ai"] = {"model": model, "tokens": tokens, "log": notes[-5:],
                  "note": "The AI was unavailable, so clips were picked by loudness only." if clips and not model else ""}
+    if review_mode and any(c.get("status") == "review" for c in clips):
+        _set(job, status="review", stage="Choose the moments you want to render", progress=1.0,
+             took=round(time.time() - t0))
+        creators.log(job["creator"], f"Video ready for review with {len(clips)} candidates: {job['title']}")
+        return
     stage = "Done" if clips else "Done, but nothing clip-worthy was found"
     _set(job, status="done", stage=stage, progress=1.0, took=round(time.time() - t0))
     try:
@@ -1067,6 +1148,7 @@ def _worker(quick_only=False):
                 if clip.get("captions", True):
                     words = json.loads((Path(job["dir"]) / "words.json").read_text(encoding="utf-8"))
                 render_one(job, clip, words)
+                _finish_review(job)
         except Exception as e:  # noqa: BLE001
             (Path(job["dir"]) / "error.log").write_text(traceback.format_exc(), encoding="utf-8")
             if kind == "job":
