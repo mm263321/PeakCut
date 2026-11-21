@@ -308,6 +308,8 @@ label.ck input{accent-color:var(--brand);margin:0}
 .lp .audio-track-control{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:11px;color:var(--dim)}
 .lp .audio-track-control select{min-width:0;max-width:190px;height:28px;padding:2px 7px;border:1px solid var(--line-2);border-radius:7px;background:#fff;font-size:12px;color:var(--text)}
 .lp .audio-track-hint{display:block!important;font-size:10px!important;color:var(--faint)!important;white-space:normal!important;line-height:1.35;margin-top:3px!important}
+.lp .source-resolution{display:block!important;font-size:11px!important;color:var(--dim)!important;white-space:normal!important;line-height:1.35;margin-top:5px!important}
+.lp .source-resolution b{display:inline!important;font-size:11px!important;color:var(--brand-ink)!important}
 .lp .ok{flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#1F7A4D;background:#E3F4EA;padding:4px 10px;border-radius:999px}
 .lp .ok svg{width:14px;height:14px}
 .lp .ok.live{background:#E5323F;color:#fff}
@@ -1638,8 +1640,11 @@ function drawAtt() {
       : `<span class="audio-track-hint">${tracks.length === 1
           ? "Original audio – No alternate tracks available."
           : "Audio track information unavailable."}</span>`;
+    const sourceResolution = i.max_resolution
+      ? `<span class="source-resolution">Max source: <b>${esc(i.max_resolution)}</b> · choose this or lower in Options</span>`
+      : `<span class="source-resolution">Maximum source resolution unavailable</span>`;
     return rowHtml(A, {id: l.id, kind: "link", thumb: i.thumb ? `<img src="${i.thumb}" alt="">` : "", len: i.duration && !i.is_live ? fmtLen(i.duration) : "",
-      title: i.title, sub: esc(i.uploader || "Video link"), extra: audioPicker,
+      title: i.title, sub: esc(i.uploader || "Video link"), extra: sourceResolution + audioPicker,
       side: l.sending ? `<span class="ok up">Sending</span>` : i.is_live ? `<span class="ok live"><i></i>Live now</span>` : `<span class="ok">${ic("check")}Ready</span>`});
   }).join("");
   h += A.files.map(f => rowHtml(A, {id: f.id, kind: "file", thumb: `<video src="${f.src}#t=1" muted preload="metadata" playsinline></video>`,
