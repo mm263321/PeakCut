@@ -407,7 +407,8 @@ def render_selected(jid: str, clip_ids: list):
     available = {c["id"] for c in candidates}
     if any(cid not in available for cid in ids):
         raise ValueError("One of the selected clips is no longer available. Refresh the page and try again.")
-    selected = [c for c in candidates if c["id"] in set(ids)]
+    chosen = set(ids)
+    selected = [c for c in candidates if c["id"] in chosen]
     job["review_skipped"] = len(candidates) - len(selected)
     job["clips"] = selected
     for clip in selected:
