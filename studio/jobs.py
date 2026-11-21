@@ -1167,6 +1167,12 @@ def _worker(quick_only=False):
                         c.update(status="error", error="The video stopped before this clip was made.")
                 _set(job, status="error", error=safe.friendly(e), stage="Stopped")
                 creators.log(job["creator"], f"Video failed: {safe.friendly(e)[:200]}")
+            else:
+                clip = next((c for c in job.get("clips", []) if c.get("id") == cid), None)
+                if clip and clip.get("status") in ("queued", "rendering"):
+                    clip.update(status="error", error=safe.friendly(e, 400))
+                    save(job)
+                _finish_review(job)
         finally:
             ctx._uid.reset(token)
             if kind == "job":
