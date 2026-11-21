@@ -128,6 +128,30 @@ def audio_tracks(formats) -> list:
     return [{"code": code, "label": label} for code, label in found.items()]
 
 
+def max_video_resolution(formats, width=None, height=None):
+    """Highest source video resolution, expressed by its shorter dimension (so portrait 1080x1920 is 1080p)."""
+    best = 0
+    for item in formats or []:
+        if not isinstance(item, dict) or str(item.get("vcodec") or "").lower() == "none":
+            continue
+        try:
+            w, h = int(item.get("width") or 0), int(item.get("height") or 0)
+        except (TypeError, ValueError):
+            continue
+        dimension = min(w, h) if w > 0 and h > 0 else max(w, h)
+        if 0 < dimension <= 16384:
+            best = max(best, dimension)
+    if not best:
+        try:
+            w, h = int(width or 0), int(height or 0)
+            dimension = min(w, h) if w > 0 and h > 0 else max(w, h)
+            if 0 < dimension <= 16384:
+                best = dimension
+        except (TypeError, ValueError):
+            pass
+    return f"{best}p" if best else None
+
+
 def _audio_format(audio_language=None):
     """Choose the requested dubbed audio, or preserve the current best/default selection."""
     if audio_language:
@@ -160,10 +184,12 @@ def info(url: str) -> dict:
     """Title, channel and length, without downloading anything."""
     with _youtube_guard(url), _ydl({}) as ydl:
         i = ydl.extract_info(url, download=False)
+    formats = i.get("formats") or []
     return {"title": i.get("title") or "", "uploader": i.get("uploader") or i.get("channel") or "",
             "duration": float(i.get("duration") or 0), "is_live": bool(i.get("is_live")),
             "thumbnail": i.get("thumbnail") or "", "kind": i.get("_type") or "video",
-            "audio_tracks": audio_tracks(i.get("formats") or [])}
+            "max_resolution": max_video_resolution(formats, i.get("width"), i.get("height")),
+            "audio_tracks": audio_tracks(formats)}
 
 
 def youtube_words(url: str):
@@ -258,7 +284,8 @@ def preview(url: str) -> dict:
         except Exception:
             thumb = ""
     out = {"title": i["title"][:200], "uploader": i["uploader"][:120], "duration": i["duration"],
-           "is_live": i["is_live"], "thumb": thumb, "audio_tracks": i.get("audio_tracks") or []}
+           "is_live": i["is_live"], "thumb": thumb, "max_resolution": i.get("max_resolution"),
+           "audio_tracks": i.get("audio_tracks") or []}
     if len(_PREVIEWS) > 300:
         _PREVIEWS.pop(next(iter(_PREVIEWS)))
     _PREVIEWS[url] = out
