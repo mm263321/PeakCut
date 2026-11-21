@@ -1052,9 +1052,16 @@ def candidate_preview(jid: str, cid: str):
         duration = min(18.0, max(3.0, float(clip.get("end") or 0) - start))
         if job.get("source", {}).get("type") == "url":
             try:
-                media.download_section(job["source"]["url"], folder, f"{cid}.preview", start,
-                                       start + duration, height=480, exact=False,
-                                       audio_language=job.get("options", {}).get("audio_language") or None)
+                generated = media.download_section(job["source"]["url"], folder, f"{cid}.preview", start,
+                                                start + duration, height=480, exact=False,
+                                                audio_language=job.get("options", {}).get("audio_language") or None)
+                if Path(generated).resolve() != preview.resolve():
+                    subprocess.run([
+                        "ffmpeg", "-y", "-v", "error", "-i", str(generated), "-vf", "scale=-2:480",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview)
+                    ], check=True, capture_output=True, timeout=90)
+                    Path(generated).unlink(missing_ok=True)
             except Exception as e:  # noqa: BLE001
                 raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
         else:
