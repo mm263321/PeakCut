@@ -1122,6 +1122,9 @@ def _run_job(job):
         except Exception:  # noqa: BLE001
             pass
         return
+    # A selected-render job recovered after a restart is finished by this video worker,
+    # rather than by the quick clip worker that normally clears this flag.
+    job["review_rendering"] = False
     stage = "Done" if clips else "Done, but nothing clip-worthy was found"
     _set(job, status="done", stage=stage, progress=1.0, took=round(time.time() - t0))
     try:
