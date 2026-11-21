@@ -32,9 +32,16 @@
     ".pc-source-help{font-size:12px;color:var(--dim);line-height:1.4}" +
     ".pc-source-play{display:flex;gap:8px;align-items:center}.pc-source-play input{min-width:0;flex:1}" +
     ".pc-output-wrap{display:flex;justify-content:center;min-width:0}" +
-    ".pc-output-canvas{width:min(100%,360px);height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
-    ".pc-output-canvas:active{cursor:grabbing}.pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
-    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-canvas{width:min(70%,360px)}}";
+    ".pc-output-stage{position:relative;width:min(100%,360px);min-width:0;line-height:0}" +
+    ".pc-output-canvas{width:100%;height:auto;display:block;border:1px solid var(--line-2);border-radius:10px;background:#171310;touch-action:none;cursor:grab}" +
+    ".pc-output-canvas:active{cursor:grabbing}" +
+    ".pc-output-guides{position:absolute;inset:0;pointer-events:none}" +
+    ".pc-output-guide{position:absolute;box-sizing:border-box;border:3px solid;pointer-events:none}" +
+    ".pc-output-guide.facecam{border-color:#20d7cf}.pc-output-guide.gameplay{border-color:#ff9b43}" +
+    ".pc-output-guide span{position:absolute;left:3px;top:3px;padding:2px 5px;background:#111d;color:#fff;font:10px/1.2 sans-serif;white-space:nowrap}" +
+    ".pc-output-guide i{position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:#fff;border:1px solid #222}" +
+    ".pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
+    "@media(max-width:760px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(70%,360px)}}";
   document.head.append(style);
 
   const presets = {
@@ -45,6 +52,7 @@
   };
 
   let panel = null, mount = null, state = null, video = null, canvas = null;
+  let outputFaceGuide = null, outputGameGuide = null, videoFramePending = false;
   let activeSource = "facecam", drag = null;
 
   function validSource() {
@@ -105,15 +113,32 @@
         ctx.fillStyle = "#f4eeea"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
         ctx.fillText(src ? name.toUpperCase() : "SELECT " + name.toUpperCase(), dx+dw/2, dy+dh/2);
       }
-      ctx.strokeStyle = name === "facecam" ? "#20d7cf" : "#ff9b43";
-      ctx.lineWidth = 3; ctx.strokeRect(dx+1.5, dy+1.5, Math.max(0,dw-3), Math.max(0,dh-3));
-      ctx.fillStyle = "#111d"; ctx.fillRect(dx+4, dy+4, Math.min(dw-8, name.length*9+12), 20);
-      ctx.fillStyle = "#fff"; ctx.font = "10px sans-serif"; ctx.textAlign = "left";
-      ctx.fillText(name.toUpperCase(), dx+9, dy+18);
-      ctx.fillStyle = "#fff"; ctx.fillRect(dx+dw-8, dy+dh-8, 8, 8);
     }
   }
-  function refresh() { drawSourceBoxes(); drawCanvas(); saveHidden(); }
+  function drawOutputGuides() {
+    if (!panel || panel.hidden) return;
+    const set = (node, rect) => {
+      if (!node || !rect) return;
+      node.style.left = (rect[0] * 100) + "%";
+      node.style.top = (rect[1] * 100) + "%";
+      node.style.width = (rect[2] * 100) + "%";
+      node.style.height = (rect[3] * 100) + "%";
+    };
+    set(outputGameGuide, state.frames.gameplay);
+    set(outputFaceGuide, state.frames.facecam);
+  }
+  function scheduleVideoFrame() {
+    if (!video || !panel || panel.hidden || video.paused ||
+        typeof video.requestVideoFrameCallback !== "function" || videoFramePending) return;
+    videoFramePending = true;
+    video.requestVideoFrameCallback(() => {
+      videoFramePending = false;
+      if (!video || !panel || panel.hidden || video.paused) return;
+      if (!drag) drawCanvas();
+      scheduleVideoFrame();
+    });
+  }
+  function refresh() { drawSourceBoxes(); drawCanvas(); drawOutputGuides(); saveHidden(); }
   function setActiveSource(name) {
     activeSource = name;
     panel.querySelectorAll("[data-pc-source]").forEach(b => b.classList.toggle("on", b.dataset.pcSource === name));
@@ -144,14 +169,21 @@
       '<div class="pc-layout-section"><h4>2. Arrange both areas on the 9:16 output</h4><div class="pc-layout-presets">' +
       '<button type="button" class="btn sm on" data-pc-preset="top">Facecam top</button><button type="button" class="btn sm" data-pc-preset="bottom">Facecam bottom</button>' +
       '<button type="button" class="btn sm" data-pc-preset="overlay">Facecam overlay</button><button type="button" class="btn sm" data-pc-preset="side">Side by side</button></div>' +
-      '<div class="pc-output-wrap"><canvas class="pc-output-canvas" id="pcOutputCanvas" width="540" height="960" aria-label="Drag frames to arrange the vertical output"></canvas></div>' +
-      '<p class="pc-source-help">Drag either frame to move it. Drag its lower-right corner to resize it. Gameplay is placed first, then facecam.</p>' +
+      '<div class="pc-output-wrap"><div class="pc-output-stage">' +
+      '<canvas class="pc-output-canvas" id="pcOutputCanvas" width="360" height="640" aria-label="Drag frames to arrange the vertical output"></canvas>' +
+      '<div class="pc-output-guides" aria-hidden="true">' +
+      '<div class="pc-output-guide gameplay" id="pcOutputGameplayGuide"><span>GAMEPLAY</span><i></i></div>' +
+      '<div class="pc-output-guide facecam" id="pcOutputFacecamGuide"><span>FACECAM</span><i></i></div>' +
+      '</div></div></div>' +
+      '<p class="pc-source-help">Drag either outline to move it. Drag its lower-right corner to resize it. The video preview refreshes when you release, keeping movement smooth. Gameplay is placed first, then facecam.</p>' +
       '<button type="button" class="btn sm" id="pcSwapFrames">Swap frame positions</button><p class="pc-layout-message" id="pcLayoutMessage" aria-live="polite"></p></div></div>' +
       '<input type="hidden" data-f="custom_layout" id="pcCustomLayoutValue" value="">';
     mount.append(host);
     panel = host;
     video = $("#pcSourceVideo", panel);
     canvas = $("#pcOutputCanvas", panel);
+    outputGameGuide = $("#pcOutputGameplayGuide", panel);
+    outputFaceGuide = $("#pcOutputFacecamGuide", panel);
     video.src = "/api/jobs/" + encodeURIComponent(mount.dataset.jid) +
       "/clips/" + encodeURIComponent(mount.dataset.cid) + "/source";
     video.addEventListener("loadedmetadata", () => {
@@ -162,10 +194,12 @@
       message("Original video loaded. Select the facecam and gameplay areas.");
     });
     video.addEventListener("loadeddata", drawCanvas);
-    video.addEventListener("seeked", drawCanvas);
+    video.addEventListener("seeked", () => { if (!drag) drawCanvas(); });
+    video.addEventListener("play", scheduleVideoFrame);
+    video.addEventListener("pause", () => { if (!drag) drawCanvas(); });
     video.addEventListener("timeupdate", () => {
       $("#pcSourceSeek", panel).value = String(Math.round(video.currentTime / Math.max(video.duration, .001) * 1000));
-      drawCanvas();
+      if (typeof video.requestVideoFrameCallback !== "function" && !drag) drawCanvas();
     });
     video.addEventListener("error", () => message("The original source preview is unavailable for this clip. Try a clip whose source video is still saved.", true));
     $("#pcSourcePlay", panel).addEventListener("click", async () => {
@@ -222,7 +256,7 @@
       } else {
         state.source[d.name] = [b[0],b[1],clamp(b[2]+p.x-d.start.x,.02,1-b[0]),clamp(b[3]+p.y-d.start.y,.02,1-b[1])];
       }
-      drawSourceBoxes(); drawCanvas();
+      drawSourceBoxes();
     });
     const end = () => {
       if (!drag || drag.kind !== "source") return;
@@ -252,9 +286,9 @@
       const d=drag,b=d.before;
       if (d.mode==="move") state.frames[d.name]=[clamp(b[0]+p.x-d.start.x,0,1-b[2]),clamp(b[1]+p.y-d.start.y,0,1-b[3]),b[2],b[3]];
       else state.frames[d.name]=[b[0],b[1],clamp(b[2]+p.x-d.start.x,.05,1-b[0]),clamp(b[3]+p.y-d.start.y,.05,1-b[1])];
-      drawCanvas();
+      drawOutputGuides();
     });
-    const end=()=>{if(drag?.kind==="output"){drag=null;saveHidden();drawCanvas();}};
+    const end=()=>{if(drag?.kind==="output"){drag=null;saveHidden();drawOutputGuides();drawCanvas();}};
     canvas.addEventListener("pointerup",end);
     canvas.addEventListener("pointercancel",end);
   }
@@ -281,6 +315,7 @@
       // Build the heavier preview UI only when the user actually selects the custom editor.
       if (!panel || panel.parentElement !== m) buildPanel();
       panel.hidden=false;
+      if (!video.paused) scheduleVideoFrame();
       if (panel.dataset.initialized !== "1") {
         panel.dataset.initialized="1";
         refresh();
@@ -289,6 +324,10 @@
     } else if (panel) {
       panel.hidden=true;
       panel.dataset.initialized="";
+      if (video && !video.paused) {
+        video.pause();
+        $("#pcSourcePlay", panel).textContent = "Play";
+      }
     }
   }
   document.addEventListener("change", e => {
