@@ -768,7 +768,7 @@ def _run_job(job):
     if game and job.get("game") != game:
         job["game"] = game
     t0 = time.time()
-    review_mode = bool(o.get("review_before_render", True))
+    review_mode = bool(o.get("review_before_render", False))  # old saved jobs keep their original automatic workflow
     notes = []
     face = False       # where the webcam is in the source, found once; False means not looked for yet
     usage.set_context(job["creator"], job["title"] or src.get("name"))
@@ -1114,6 +1114,13 @@ def _run_job(job):
         _set(job, status="review", stage="Choose the moments you want to render", progress=1.0,
              took=round(time.time() - t0))
         creators.log(job["creator"], f"Video ready for review with {len(clips)} candidates: {job['title']}")
+        try:
+            from . import notices
+            name = job.get("title") or job["source"].get("name") or "your video"
+            notices.add(job.get("user"), "clips", f"{len(clips)} moments ready to review",
+                        name, f"/app/creators/{job['creator']}" if job.get("creator") else "/app/videos")
+        except Exception:  # noqa: BLE001
+            pass
         return
     stage = "Done" if clips else "Done, but nothing clip-worthy was found"
     _set(job, status="done", stage=stage, progress=1.0, took=round(time.time() - t0))
