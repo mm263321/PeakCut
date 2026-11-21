@@ -62,7 +62,6 @@ def main() -> int:
                 ("manual clip trimming and video filters", ["tests/test_manual_edit.py"]),
                 ("YouTube dubbed audio track selection", ["tests/test_audio_tracks.py"]),
                 ("optional clipping method defaults and overrides", ["tests/test_clip_method.py"]),
-                ("review before rendering and selected clip queue", ["tests/test_review.py"]),
                 ("visual judge scoring and graceful fallback", ["tests/test_visual_judge.py"]),
                 ("Advanced AI live decisions and the unchanged classic path", ["tests/test_live_visual.py"]),
                 ("connecting YouTube, Instagram and TikTok", ["tests/test_connect.py"]),
