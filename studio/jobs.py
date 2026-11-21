@@ -252,6 +252,31 @@ def _load_file(f: Path, uid: str):
         job["source_path"] = _remap(job["source_path"], f.parent)
     if job.get("source", {}).get("path"):
         job["source"]["path"] = _remap(job["source"]["path"], f.parent)
+    # Jobs created by the removed review-before-render feature may still have unrendered
+    # candidates saved with status="review". Resume only the best requested number automatically.
+    pending_review = [c for c in job.get("clips", []) if c.get("status") == "review"]
+    if job.get("status") == "review" or pending_review:
+        if pending_review:
+            try:
+                review_limit = max(1, int((job.get("options") or {}).get("max_clips") or 6))
+            except (TypeError, ValueError):
+                review_limit = 6
+            keep_ids = {
+                c.get("id") for c in sorted(
+                    pending_review,
+                    key=lambda c: c.get("score") if isinstance(c.get("score"), (int, float)) else 0,
+                    reverse=True,
+                )[:review_limit]
+            }
+            job["clips"] = [
+                c for c in job.get("clips", [])
+                if c.get("status") != "review" or c.get("id") in keep_ids
+            ]
+            for c in job["clips"]:
+                if c.get("status") == "review":
+                    c["status"] = "queued"
+        if job.get("status") == "review":
+            job.update(status="queued", stage="Automatically rendering after update", error=None)
     if job.get("status") in ("queued", "running") and job.get("kind") != "live":
         # Picked up again as soon as the server is back (jobs.start), from the last finished part of the transcript.
         job.update(status="queued", stage="Picking up where it stopped", error=None, resume=True)
