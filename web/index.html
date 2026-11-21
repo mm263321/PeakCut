@@ -1451,7 +1451,7 @@ function drawAdd(variant) {
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
-      <div class="ob wide"><label class="sw"><input type="checkbox" id="o_review" checked><span>Review clips before rendering<small>PeakCut finds up to twice as many candidates, then renders only the clips you choose. Previews are created only when opened.</small></span></label></div>
+      <div class="ob wide"><label class="sw"><input type="checkbox" id="o_review" checked><span>Review clips before rendering<small>PeakCut finds up to twice as many candidates, then renders only the clips you choose. Previews are created only when opened. Advanced AI still fetches frames for its separate visual check.</small></span></label></div>
       <div class="ob wide"><label class="f"><span class="ot" style="margin:0">Big text on every clip <span style="font-weight:400">(optional)</span></span>
         <input id="o_hook" maxlength="60" autocomplete="off" value="${esc(c?.hook_text || "")}" placeholder="Left empty, the AI writes a different one for each clip" aria-label="Big text on every clip"></label></div>
       <div class="ob wide"><label class="f"><span class="ot" style="margin:0">Description for every clip <span style="font-weight:400">(optional)</span></span>
@@ -2032,7 +2032,7 @@ function jobHtml(j) {
   if (j.status === "live") return liveHtml(j);
   const busy = j.status === "queued" || j.status === "running";
   const who = !creatorId() && j.creator ? S.creators.find(c => c.id === j.creator)?.name : "";
-  const meta = [who, j.uploader, j.duration ? fmt(j.duration) + " long" : "", j.clips.length ? j.clips.length + (j.clips.length === 1 ? " clip" : " clips") : "",
+  const meta = [who, j.uploader, j.duration ? fmt(j.duration) + " long" : "", j.clips.length ? j.status === "review" ? j.clips.length + " candidates" : j.clips.length + (j.clips.length === 1 ? " clip" : " clips") : "",
                 j.took ? "made in " + fmt(j.took) : "", j.kind === "live" ? "recording, " + j.stage.toLowerCase() : ""].filter(Boolean).map(esc).join(" · ");
   const pic = j.thumb ? `<img src="/media/${esc(j.id)}/thumb.jpg" alt="" loading="lazy">` : ic(j.source?.type === "file" ? "film" : "link");
   return `<div class="job-head"><div class="jt"><span class="jthumb">${pic}${j.duration ? `<span class="du">${fmt(j.duration)}</span>` : ""}</span><div style="min-width:0"><h3>${esc(j.title || j.source.name)}</h3><p class="sub">${meta}</p></div></div>
