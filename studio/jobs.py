@@ -534,7 +534,7 @@ def clip_video_settings(job, clip) -> dict:
 
 def render_one(job, clip, words):
     d = Path(job["dir"])
-    clip["status"] = "rendering"
+    clip["status"] = "queued"  # waiting for a global render slot is not an active encode
     save(job)
     try:
         if not clip.get("src") and not job.get("source_path"):
@@ -551,6 +551,8 @@ def render_one(job, clip, words):
         # Hardware encoders and video filters can saturate the GPU when several clips run together.
         # Keep the number of active encodes bounded across the entire app, not just per video.
         with _RENDER_SLOTS:
+            clip["status"] = "rendering"
+            save(job)
             out = render.render_clip(src, d / "clips", clip["id"], local, near, job["width"], job["height"])
         clip.update(out, status="done", version=clip.get("version", 0) + 1, error=None)
         post = {k: clip[k] for k in ("title", "description", "hashtags", "hook", "start", "end", "score")}
@@ -604,7 +606,7 @@ def _wait_for_clips(job, futures, began, workers):
                 f.result()
                 continue
             t = began.get(clip["id"])
-            if (t and time.time() - t > CLIP_MINUTES * 60) or (not t and given_up >= workers):
+            if clip.get("status") == "rendering" and ((t and time.time() - t > CLIP_MINUTES * 60) or (not t and given_up >= workers)):
                 given_up += 1
                 clip.update(status="error", error=late)
                 creators.log(job["creator"], f"Clip stopped after {CLIP_MINUTES:g} minutes: {clip.get('title') or clip.get('hook') or clip['id']}")
