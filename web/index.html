@@ -533,6 +533,25 @@ img.av{object-fit:cover}
 .err{color:var(--bad);font-size:13px;overflow-wrap:anywhere;margin:6px 0}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
 .clip{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+.review-panel{margin:12px 0 18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--muted)}
+.review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.review-head h4{font-size:14px;font-weight:700;color:var(--brand-ink)}
+.review-head p{font-size:12px;color:var(--dim);margin-top:3px}
+.review-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.review-actions .grow{flex:1}
+.review-count{font-size:12px;font-weight:600;color:var(--dim)}
+.review-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+.review-candidate{min-width:0;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.review-candidate video{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#181818}
+.review-candidate-body{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.review-candidate-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.review-choice{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;cursor:pointer}
+.review-choice input{width:16px;height:16px;accent-color:var(--brand)}
+.review-candidate-title{font-size:13px;font-weight:700;color:var(--brand-ink)}
+.review-candidate-text{font-size:12px;color:var(--dim);line-height:1.45;overflow-wrap:anywhere}
+.review-candidate-meta{font-size:11px;color:var(--faint)}
+.review-candidate a{font-size:12px;font-weight:600;color:var(--brand-ink);text-decoration:underline;text-underline-offset:2px}
+@media(max-width:560px){.review-panel{padding:10px}.review-grid{grid-template-columns:1fr}.review-head{display:block}.review-actions .btn{flex:1}.review-count{width:100%}}
 .shot{position:relative;aspect-ratio:9/16;background:#17110E;border:0;padding:0;cursor:pointer;display:block;width:100%;overflow:hidden}
 .shot img{width:100%;height:100%;object-fit:cover;display:block}
 .shot .veil{position:absolute;left:10px;bottom:10px}
@@ -1431,6 +1450,7 @@ function drawAdd(variant) {
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
+      <div class="ob wide"><label class="sw"><input type="checkbox" id="o_review" checked><span>Review clips before rendering<small>PeakCut finds up to twice as many candidates, then renders only the clips you choose. Previews are created only when opened.</small></span></label></div>
       <div class="ob wide"><label class="f"><span class="ot" style="margin:0">Big text on every clip <span style="font-weight:400">(optional)</span></span>
         <input id="o_hook" maxlength="60" autocomplete="off" value="${esc(c?.hook_text || "")}" placeholder="Left empty, the AI writes a different one for each clip" aria-label="Big text on every clip"></label></div>
       <div class="ob wide"><label class="f"><span class="ot" style="margin:0">Description for every clip <span style="font-weight:400">(optional)</span></span>
@@ -1573,7 +1593,7 @@ document.addEventListener("keydown", e => {
 const targetCreator = () => creatorId() || $("#o_creator")?.value || "";
 function jobOptions() {
   const n = id => { const v = $(id).value; return v === "" ? null : Number(v); };
-  const o = {max_clips:n("#o_max"), min_len:n("#o_min"), max_len:n("#o_maxlen"), captions:$("#o_captions").checked, clip_method:$("#o_clip_method").value, style:$("#o_style").value, layout:$("#o_layout").value, quality:n("#o_quality"),
+  const o = {max_clips:n("#o_max"), min_len:n("#o_min"), max_len:n("#o_maxlen"), captions:$("#o_captions").checked, review_before_render:$("#o_review")?.checked !== false, clip_method:$("#o_clip_method").value, style:$("#o_style").value, layout:$("#o_layout").value, quality:n("#o_quality"),
     export_resolution:$("#o_export_resolution").value, export_encoder:$("#o_export_encoder").value, export_quality:$("#o_export_quality").value,
     filter:$("#o_filter").value, filter_strength:Number($("#o_filter_strength").value),
     hook_text:$("#o_hook").value.trim(), description_text:$("#o_desc").value.trim(), lang:$("#o_lang")?.value || "en"};
@@ -1928,6 +1948,7 @@ function jobSettingsHtml(j) {
   add("Source quality", j.source?.type === "file" ? "Original uploaded file" :
       (Number(o.quality) === 2160 ? "Up to 4K (2160p)" : `${o.quality || 2160}p maximum`));
   add("Clipping method", o.clip_method === "advanced" ? "Advanced AI · Visual Judge" : "PeakCut Automatic");
+  add("Review before rendering", o.review_before_render === false ? "Off · render automatically" : "On · choose clips first");
   add("Number of clips", o.max_clips ?? 6);
   add("Clip length", `${o.min_len ?? 15}s – ${o.max_len ?? 60}s`);
   add("Captions", o.captions === false ? "Off" : "On");
@@ -1953,6 +1974,59 @@ function jobSettingsHtml(j) {
     <div class="job-settings-grid">${rows.map(([label,value]) => `<div class="job-setting"><b>${esc(label)}</b><span>${esc(value)}</span></div>`).join("")}</div>
   </section>`;
 }
+const reviewSelection = new Map();
+function reviewSelectionFor(j) {
+  const candidates = (j?.clips || []).filter(c => c.status === "review");
+  const max = Number(j?.options?.max_clips) || 6;
+  if (!reviewSelection.has(j.id)) {
+    reviewSelection.set(j.id, new Set([...candidates].sort((a,b) => (b.score || 0) - (a.score || 0)).slice(0,max).map(c => c.id)));
+  }
+  const selected = reviewSelection.get(j.id);
+  const valid = new Set(candidates.map(c => c.id));
+  for (const id of [...selected]) if (!valid.has(id)) selected.delete(id);
+  return selected;
+}
+function reviewSourceUrl(j, c) {
+  const raw = j.source?.url;
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    if (u.hostname === "youtu.be" || u.hostname.endsWith("youtube.com"))
+      u.searchParams.set("t", `${Math.floor(c.start || 0)}s`);
+    return u.toString();
+  } catch { return raw; }
+}
+function reviewHtml(j) {
+  const candidates = (j.clips || []).filter(c => c.status === "review");
+  if (!candidates.length) return "";
+  const selected = reviewSelectionFor(j), max = Number(j.options?.max_clips) || 6;
+  return `<section class="review-panel" aria-label="Review AI clip candidates">
+    <div class="review-head"><div><h4>Review AI-selected moments</h4><p>Found ${candidates.length} potential clips. Choose up to ${max} to render. Nothing has been fully rendered yet.</p></div></div>
+    <div class="review-actions">
+      <button class="btn sm" data-act="reviewall" data-j="${j.id}">Select top ${Math.min(max,candidates.length)} scores</button>
+      <button class="btn sm" data-act="reviewclear" data-j="${j.id}">Clear selection</button>
+      <span class="grow"></span><span class="review-count">${selected.size} of ${max} selected</span>
+      <button class="btn sm primary" data-act="renderselected" data-j="${j.id}" ${!selected.size || selected.size > max ? "disabled" : ""}>Render selected (${selected.size})</button>
+    </div>
+    <div class="review-grid">${candidates.map(c => {
+      const at = reviewSourceUrl(j,c);
+      return `<article class="review-candidate">
+        <video controls preload="none" playsinline src="/api/jobs/${encodeURIComponent(j.id)}/clips/${encodeURIComponent(c.id)}/preview"></video>
+        <div class="review-candidate-body">
+          <div class="review-candidate-top">
+            <label class="review-choice"><input type="checkbox" data-review-select="1" data-j="${j.id}" data-c="${esc(c.id)}" ${selected.has(c.id) ? "checked" : ""}> Select clip</label>
+            <span class="badge ${scoreCls(c.score)}">${c.score || 0}/100</span>
+          </div>
+          <div class="review-candidate-title">${esc(c.hook || c.title || "Potential highlight")}</div>
+          <div class="review-candidate-text">${esc(c.transcript_preview || c.reason || "No transcript excerpt is available.")}</div>
+          <div class="review-candidate-meta">${fmtLen(c.start)} – ${fmtLen(c.end)} · ${fmtLen(c.end-c.start)} · ${esc(c.category || "moment")}</div>
+          ${at ? `<a href="${esc(at)}" target="_blank" rel="noopener">Open original at this moment</a>` : ""}
+          <div class="review-candidate-meta">${esc(c.reason || "")}</div>
+        </div>
+      </article>`;
+    }).join("")}</div>
+  </section>`;
+}
 function jobHtml(j) {
   if (j.status === "live") return liveHtml(j);
   const busy = j.status === "queued" || j.status === "running";
@@ -1968,7 +2042,8 @@ function jobHtml(j) {
     ${busy ? `<div class="bar"><i style="width:${Math.round(j.progress * 100)}%"></i></div><p class="sub">${esc(j.stage)} · ${Math.round(j.progress * 100)}%</p>${jobSettingsHtml(j)}` : ""}
     ${j.status === "done" && !j.clips.length ? `<p class="sub">${esc(j.stage)}</p>` : ""}
     ${j.error ? `<div class="err">${esc(j.error)}<button class="rep" data-act="report" data-ctx="${esc("Video failed: " + (j.title || j.source.name || "") + " | " + j.error)}">Report this</button></div>` : ""}${j.ai?.note ? `<p class="sub">${esc(j.ai.note)}</p>` : ""}
-    ${j.clips.length ? `<div class="grid">${j.clips.map(c => clipHtml(j, c)).join("")}</div>` : ""}`;
+    ${j.status === "review" ? reviewHtml(j) : ""}
+    ${j.clips.length && j.status !== "review" ? `<div class="grid">${j.clips.map(c => clipHtml(j, c)).join("")}</div>` : ""}`;
 }
 /* ---- selecting several videos and clips: delete or download them together */
 const sel = () => (S.sel = S.sel || new Set());
@@ -2816,6 +2891,13 @@ document.addEventListener("change", async e => {
     syncCaptionStyle(t);
   }
   if (t.id === "ai_provider") { $("#ai_models").innerHTML = ""; if (S.ai && t.value !== S.ai.provider) { $("#ai_model").value = ""; $("#ai_base").value = ""; } return aiHints(); }
+  if (t.dataset.reviewSelect !== undefined) {
+    const j = jobOf(t.dataset.j);
+    if (!j) return;
+    const selected = reviewSelectionFor(j);
+    if (t.checked) selected.add(t.dataset.c); else selected.delete(t.dataset.c);
+    return render();
+  }
   if (t.dataset.sel) {
     const k = t.dataset.sel;
     if (t.checked) sel().add(k); else sel().delete(k);
@@ -2895,6 +2977,30 @@ document.addEventListener("click", async e => {
     if (a === "addmore") { const u = $("#url"); return u && !u.value ? (u.focus(), toast("Paste another link, or drop a file anywhere on the box.")) : $("#file").click(); }
     if (a === "closedlg") return $("#clipdlg").close();
     if (a === "openclip") return openClip(d.j, d.c);
+    if (a === "reviewall" || a === "reviewclear") {
+      const j = jobOf(d.j); if (!j) return;
+      const selected = reviewSelectionFor(j);
+      selected.clear();
+      if (a === "reviewall") {
+        const max = Number(j.options?.max_clips) || 6;
+        [...j.clips].filter(c => c.status === "review").sort((x,y) => (y.score || 0) - (x.score || 0))
+          .slice(0,max).forEach(c => selected.add(c.id));
+      }
+      return render();
+    }
+    if (a === "renderselected") {
+      const j = jobOf(d.j); if (!j) return;
+      const ids = [...reviewSelectionFor(j)];
+      if (!ids.length) return toast("Select at least one clip to render.", "bad");
+      if (ids.length > (Number(j.options?.max_clips) || 6)) return toast("You selected too many clips.", "bad");
+      b.disabled = true;
+      try {
+        await send(`/api/jobs/${encodeURIComponent(j.id)}/review`, {clips:ids});
+        reviewSelection.delete(j.id);
+        toast(`Rendering ${ids.length} selected clip${ids.length === 1 ? "" : "s"}…`, "ok");
+        return tick();
+      } catch (err) { b.disabled = false; throw err; }
+    }
     if (a === "newcreator") {
       const dlg = $("#formdlg");
       dlg.innerHTML = `<form method="dialog" class="dlg"><h2>New creator</h2><p class="help">Each creator gets their own workspace, folder, settings and accounts.</p>
