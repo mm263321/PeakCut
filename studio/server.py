@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -990,6 +991,17 @@ def upload_cancel(upid: str):
     return {"ok": True}
 
 
+@app.post("/api/jobs/{jid}/review")
+def render_review(jid: str, body: dict = Body(...)):
+    _job_or_404(jid)
+    _throttle("review:" + ctx.uid(), 20, 600, "Please wait before sending another clip selection.")
+    try:
+        job = jobs.render_selected(jid, body.get("clips"))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, str(e))
+    return jobs.public(job)
+
+
 @app.post("/api/jobs/{jid}/clips/{cid}/render")
 def rerender(jid: str, cid: str, body: dict = Body(...)):
     job = _job_or_404(jid)
@@ -1023,6 +1035,50 @@ def clip_source(jid: str, cid: str):
         raise HTTPException(409, "The original source for this clip is no longer available.")
     return FileResponse(source, media_type=mimetypes.guess_type(source.name)[0] or "application/octet-stream",
                         headers={"Cache-Control": "private, no-store"})
+
+
+@app.get("/api/jobs/{jid}/clips/{cid}/preview")
+def candidate_preview(jid: str, cid: str):
+    """Create a small, on-demand preview for an AI candidate; never fetch or encode previews until asked."""
+    job, clip = _clip_or_404(jid, cid)
+    if job.get("status") != "review" or clip.get("status") != "review":
+        raise HTTPException(409, "This clip is no longer waiting for review.")
+    _throttle("candidate-preview:" + ctx.uid(), 60, 60, "Please wait before opening more previews.")
+    folder = Path(job["dir"]) / "previews"
+    folder.mkdir(parents=True, exist_ok=True)
+    preview = folder / f"{cid}.preview.mp4"
+    if not preview.is_file():
+        start = max(0.0, float(clip.get("start") or 0))
+        duration = min(18.0, max(3.0, float(clip.get("end") or 0) - start))
+        if job.get("source", {}).get("type") == "url":
+            try:
+                media.download_section(job["source"]["url"], folder, f"{cid}.preview", start,
+                                       start + duration, height=480, exact=False,
+                                       audio_language=job.get("options", {}).get("audio_language") or None)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
+        else:
+            source = Path(str(job.get("source_path") or job.get("source", {}).get("path") or ""))
+            if not source.is_file():
+                raise HTTPException(409, "The uploaded source is no longer available.")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-v", "error", "-ss", f"{start:.2f}", "-i", str(source),
+                    "-t", f"{duration:.2f}", "-vf", "scale=-2:480", "-c:v", "libx264",
+                    "-preset", "ultrafast", "-crf", "30", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(preview)
+                ], check=True, capture_output=True, timeout=90)
+            except subprocess.TimeoutExpired:
+                preview.unlink(missing_ok=True)
+                raise HTTPException(504, "This preview took too long to prepare. Try again.")
+            except (OSError, subprocess.CalledProcessError) as e:
+                preview.unlink(missing_ok=True)
+                raise HTTPException(422, f"Couldn't prepare this preview: {safe.friendly(e, 180)}")
+    if not preview.is_file() or preview.stat().st_size > 50 * 1024 * 1024:
+        preview.unlink(missing_ok=True)
+        raise HTTPException(422, "The preview is unavailable or too large.")
+    return FileResponse(preview, media_type="video/mp4",
+                        headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.put("/api/jobs/{jid}/clips/{cid}/text")
