@@ -935,7 +935,9 @@ def _run_job(job):
 
     def make(clip, words_now):
         began[clip["id"]] = time.time()
-        if src["type"] == "url" and not clip.get("src") and (pieces or not whole_video()):
+        if src["type"] == "url" and not clip.get("src") and (
+                pieces or (review_mode and not job.get("source_path")) or not whole_video()):
+            # During review-mode recovery, fetch only approved clip sections, not the whole source video.
             _fetch_piece(job, clip, audio)
         if clip["status"] != "error" and clip.get("captions", True) and yt_model:
             # The clip was found with YouTube's transcript. What is shown on screen comes from our own model,
