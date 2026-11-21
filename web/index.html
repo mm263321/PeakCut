@@ -1630,10 +1630,14 @@ function drawAtt() {
       ${A.busy ? "" : `<button type="button" class="rm" data-rm="link" data-id="${l.id}" aria-label="Remove link">${ic("x")}</button>`}</div>`;
     const i = l.info;
     const tracks = Array.isArray(i.audio_tracks) ? i.audio_tracks : [];
-    const audioPicker = tracks.length > 1 ? `<label class="audio-track-control"><span>Audio track</span><select data-audio-track="${esc(l.id)}" aria-label="Choose dubbed audio track" ${A.busy ? "disabled" : ""}>
+    const audioPicker = tracks.length > 1
+      ? `<label class="audio-track-control"><span>Audio track</span><select data-audio-track="${esc(l.id)}" aria-label="Choose dubbed audio track" ${A.busy ? "disabled" : ""}>
       <option value="" ${!l.audioLanguage ? "selected" : ""}>YouTube default</option>
       ${tracks.map(t => `<option value="${esc(t.code)}" ${l.audioLanguage === t.code ? "selected" : ""}>${esc(t.label)} · ${esc(t.code)}</option>`).join("")}
-    </select></label><span class="audio-track-hint">Hindi dub uses the Hinglish speech model automatically. For other languages, match the Spoken language setting in Options.</span>` : "";
+    </select></label><span class="audio-track-hint">Hindi dub uses the Hinglish speech model automatically. For other languages, match the Spoken language setting in Options.</span>`
+      : `<span class="audio-track-hint">${tracks.length === 1
+          ? "Original audio – No alternate tracks available."
+          : "Audio track information unavailable."}</span>`;
     return rowHtml(A, {id: l.id, kind: "link", thumb: i.thumb ? `<img src="${i.thumb}" alt="">` : "", len: i.duration && !i.is_live ? fmtLen(i.duration) : "",
       title: i.title, sub: esc(i.uploader || "Video link"), extra: audioPicker,
       side: l.sending ? `<span class="ok up">Sending</span>` : i.is_live ? `<span class="ok live"><i></i>Live now</span>` : `<span class="ok">${ic("check")}Ready</span>`});
