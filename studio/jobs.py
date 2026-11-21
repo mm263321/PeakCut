@@ -14,6 +14,9 @@ from pathlib import Path
 
 from . import brain, config, creators, ctx, custom_layout, export_settings, facecam, fetch_model, games, hashtags, load, media, quality, render, roman, safe, transcribe, usage
 
+# Share one render limit across every video job, single-clip remake, and live clip.
+_RENDER_SLOTS = threading.BoundedSemaphore(config.RENDER_WORKERS)
+
 class _FairQueue:
     """Whose video is next. Each person has their own line and the lines take turns, so someone who adds ten
     videos does not make everyone else wait behind all ten. Small tasks (re-making one clip) go first."""
@@ -545,7 +548,10 @@ def render_one(job, clip, words):
         # Export precedence: creator settings flow into the job; a clip's saved settings override them.
         local.update(clip_export_settings(job, clip))
         local.update(clip_video_settings(job, clip))
-        out = render.render_clip(src, d / "clips", clip["id"], local, near, job["width"], job["height"])
+        # Hardware encoders and video filters can saturate the GPU when several clips run together.
+        # Keep the number of active encodes bounded across the entire app, not just per video.
+        with _RENDER_SLOTS:
+            out = render.render_clip(src, d / "clips", clip["id"], local, near, job["width"], job["height"])
         clip.update(out, status="done", version=clip.get("version", 0) + 1, error=None)
         post = {k: clip[k] for k in ("title", "description", "hashtags", "hook", "start", "end", "score")}
         (d / "clips" / f"{clip['id']}.json").write_text(json.dumps(post, indent=1), encoding="utf-8")
