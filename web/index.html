@@ -3540,6 +3540,7 @@ function drawAdd(variant) {
     ${c ? "" : `<div class="composer-opts" inert><div class="og">
       ${langSeg(c?.lang || "en")}
       <div class="ob"><label class="f">Clipping method<select id="o_clip_method">${opts({peakcut:"PeakCut Automatic (default)", advanced:"Advanced AI · Visual Judge"}, c?.clip_method || "peakcut")}</select><small class="hint">Advanced AI checks sampled video frames as well as the existing speech and reaction signals. It uses extra AI image requests and needs a vision-capable model. If image analysis is unavailable, PeakCut Automatic is used for that check.</small></label></div>
+      <div class="ob"><label class="f">Clip selection<select id="o_clip_selection">${opts({balanced:"Balanced by section (default)", global:"Global Top N · entire video"}, "balanced")}</select><small class="hint">Balanced starts making clips as each section is analysed. Global Top N analyses the whole video first, compares all candidates, then renders only the highest-scoring non-overlapping clips. It takes longer and may use more AI tokens.</small></label></div>
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
         ${stepper("o_max", "How many", cr?.max_clips ?? 6, 1, 20, 1, "")}
         ${stepper("o_min", "Shortest", cr?.min_len ?? 15, 5, 120, 5, "s")}
@@ -3709,6 +3710,7 @@ function jobOptions() {
   if ($("#o_tpl")?.value) o.template = $("#o_tpl").value;
   if ($("#o_camp")?.value) o.campaign = $("#o_camp").value;
   if ($("#o_clip_method")?.value) o.clip_method = $("#o_clip_method").value;
+  if ($("#o_clip_selection")?.value) o.clip_selection = $("#o_clip_selection").value;
   if (n("#o_quality") !== null) o.quality = n("#o_quality");
   if ($("#o_export_resolution")?.value) o.export_resolution = $("#o_export_resolution").value;
   if ($("#o_export_encoder")?.value) o.export_encoder = $("#o_export_encoder").value;
@@ -4200,6 +4202,7 @@ function jobSettingsHtml(j) {
   add("Source quality", j.source?.type === "file" ? "Original uploaded file" :
       (Number(o.quality) === 2160 ? "Up to 4K (2160p)" : `${o.quality || 2160}p maximum`));
   add("Clipping method", o.clip_method === "advanced" ? "Advanced AI · Visual Judge" : "PeakCut Automatic");
+  add("Clip selection", o.clip_selection === "global" ? "Global Top N · entire video" : "Balanced by section");
   add("Number of clips", o.max_clips ?? 6);
   add("Clip length", `${o.min_len ?? 15}s – ${o.max_len ?? 60}s`);
   add("Captions", o.captions === false ? "Off" : "On");
@@ -4388,6 +4391,7 @@ function drawCreatorForm() {
     <div class="card"><h2>How the AI decides</h2><p class="help">PeakCut Automatic uses two separate checks: spoken words, and reaction signals from loudness and chat. Advanced AI adds a third judge that inspects sampled video frames without seeing the transcript.</p>
       <div class="fields">
         <label class="f">Clipping method<select data-k="clip_method">${opts({peakcut:"PeakCut Automatic (default)", advanced:"Advanced AI · Visual Judge"}, c.clip_method || "peakcut")}</select><small class="sub" style="font-weight:400">PeakCut Automatic keeps the existing two-judge system. Advanced AI adds a visual judge that inspects sampled frames; it uses extra AI image requests and needs a vision-capable model.</small></label>
+        <label class="f">Clip selection<select data-k="clip_selection">${opts({balanced:"Balanced by section (default)", global:"Global Top N · entire video"}, c.clip_selection || "balanced")}</select><small class="sub" style="font-weight:400">Balanced makes clips as each section is analysed. Global Top N analyses all sections first, compares candidate scores across the full video, then renders only the highest-scoring non-overlapping clips. It takes longer and may use more AI tokens.</small></label>
         <label class="f">Check the live stream every<select data-k="ai_every_min">${opts({1:"1 minute", 2:"2 minutes", 3:"3 minutes", 5:"5 minutes", 10:"10 minutes"}, c.ai_every_min || 3)}</select><small class="sub" id="costhint" style="font-weight:400">${costHint(c.ai_every_min)}</small></label>
         <p class="help span" style="margin:0">On top of that, the AI looks straight away when the stream suddenly gets louder or chat gets busier, or when someone says "clip it".</p>
         <label class="f">A jump means louder or faster chat than usual by<select data-k="auto_jump_pct">${opts({30:"30% (looks more often)", 60:"60% (default)", 100:"100% (twice as busy)", 200:"200% (only big moments)"}, [30,60,100,200].includes(Number(c.auto_jump_pct)) ? c.auto_jump_pct : 60)}</select></label>
