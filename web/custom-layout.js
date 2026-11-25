@@ -42,6 +42,21 @@
     ".pc-output-guide i{position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:#fff;border:1px solid #222}" +
     ".pc-layout-message{font-size:12px;color:var(--dim);min-height:18px}.pc-layout-section:first-child,.pc-layout-section:nth-child(2){width:100%}.pc-layout-message.bad{color:var(--bad)}" +
     "@media(max-width:900px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(100%,260px)}}";
+
+  // PC CUSTOM LAYOUT ISOLATED OVERRIDES
+  // Keep this editor independent from the surrounding clip-dialog layout.
+  style.textContent +=
+    ".pc-custom-layout{width:100%;max-width:100%;min-width:0;box-sizing:border-box;display:flex!important;flex-direction:column!important;align-items:stretch!important}" +
+    ".pc-layout-head{display:flex!important;flex-wrap:wrap;align-items:flex-start;min-width:0}" +
+    ".pc-layout-head h3,.pc-layout-head .sub{max-width:100%;white-space:normal;overflow-wrap:anywhere}" +
+    ".pc-layout-grid{display:flex!important;flex-direction:column!important;align-items:stretch!important;width:100%;max-width:100%;min-width:0;gap:18px!important}" +
+    ".pc-layout-section{display:flex!important;flex-direction:column!important;align-items:stretch!important;width:100%!important;max-width:100%;min-width:0;gap:9px!important;position:relative}" +
+    ".pc-layout-section h4{display:block!important;position:static!important;float:none!important;transform:none!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere;margin:0!important;padding:0!important}" +
+    ".pc-layout-tools,.pc-layout-presets{display:flex!important;position:static!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important;align-content:flex-start;justify-content:flex-start;gap:6px!important;width:100%;max-width:100%;min-width:0}" +
+    ".pc-layout-tools button,.pc-layout-presets button{position:static!important;float:none!important;transform:none!important;flex:0 1 auto!important;width:auto!important;max-width:100%;height:auto!important;min-height:32px;line-height:1.3;white-space:normal!important;margin:0!important}" +
+    ".pc-source-stage{width:100%!important;max-width:100%}" +
+    ".pc-output-wrap{width:100%}" +
+    ".pc-output-stage{width:min(100%,260px)!important;max-width:100%}";
   document.head.append(style);
 
   const presets = {
