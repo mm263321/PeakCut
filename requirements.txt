@@ -8,6 +8,13 @@ sherpa-onnx==2.0.1
 soundfile==0.14.0
 SQLAlchemy==2.0.57
 uvicorn==0.54.0
-yt-dlp==2026.10.21
+
+# YouTube downloader with signature scripts
+yt-dlp==2026.10.21; python_version < "3.11"
+yt-dlp[default]==2026.10.26; python_version >= "3.11"
+
 pillow==11.3.0
+opencv-python-headless==4.12.0.88
+
+# Required for our Hinglish Prime speech model
 pywhispercpp==1.5.1

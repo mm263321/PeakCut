@@ -22,8 +22,12 @@ _lock = threading.Lock()
 # machine (under 8 cores) this is still a single copy, as before.
 _CPUS = os.cpu_count() or 4
 PROVIDER = os.environ.get("PEAKCUT_ASR_PROVIDER", "cpu").strip().lower() or "cpu"      # "cuda" on a graphics card
+# Keep local speech recognition light on CPU and memory. Explicit environment values still override these defaults.
 THREADS = int(os.environ.get("PEAKCUT_ASR_THREADS") or min(3, max(2, _CPUS - 2)))
-COPIES = int(os.environ.get("PEAKCUT_ASR_COPIES") or (1 if PROVIDER != "cpu" else min(2, max(1, _CPUS // THREADS))))
+COPIES = int(os.environ.get("PEAKCUT_ASR_COPIES") or (
+    1 if PROVIDER != "cpu" or os.environ.get("PEAKCUT_ASR_URL", "").strip()
+    else min(2, max(1, _CPUS // THREADS))
+))
 IDLE = int(os.environ.get("PEAKCUT_ASR_IDLE_MINUTES", "15")) * 60      # a language unused this long is put away
 
 

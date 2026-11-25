@@ -31,14 +31,50 @@ LANGS = [x for x in (s.strip() for s in os.environ.get("PEAKCUT_ASR_LANGS", "en"
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 _stats = {"pieces": 0, "audio_s": 0.0, "busy_s": 0.0, "since": time.time()}
 _slock = threading.Lock()
+_busy = [0]                             # requests being decoded right now
+
+# The card's memory: the speech library keeps the scratch memory of every batch it has seen and never hands it back,
+# so over days it fills the card and every request fails. The service then restarts itself (Docker starts it again,
+# the model reloads in about 20 seconds, nothing is lost: it holds no data). Meanwhile PeakCut decodes on its own
+# processors, as it does whenever this machine is away.
+MEM_FULL = float(os.environ.get("PEAKCUT_ASR_MEM_FULL", "0.85"))    # restart, when idle, once this share is in use
+_CARD_ERRORS = ("cuda", "cublas", "cudnn", "out of memory", "allocation failed", "allocate")
+
+
+def _restart(why: str):
+    print(f"Speech machine restarting: {why}", flush=True)
+    threading.Timer(0.3, lambda: os._exit(1)).start()     # after this answer has gone out
+
+
+def _card_share():
+    """Share of the card's memory in use (0 to 1), or None if it can't be read."""
+    try:
+        import ctypes
+        nv = ctypes.CDLL("libnvidia-ml.so.1")
+        if nv.nvmlInit_v2() != 0:
+            return None
+        h = ctypes.c_void_p()
+        if nv.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(h)) != 0:
+            return None
+
+        class Mem(ctypes.Structure):
+            _fields_ = [("total", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong), ("used", ctypes.c_ulonglong)]
+        m = Mem()
+        if nv.nvmlDeviceGetMemoryInfo(h, ctypes.byref(m)) != 0 or not m.total:
+            return None
+        return m.used / m.total
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @app.get("/healthz")
 def healthz():
     with _slock:
         s = dict(_stats)
+    share = _card_share()
     return {"ok": True, "provider": transcribe.PROVIDER, "langs": LANGS, "pieces": s["pieces"], "audio_hours": round(s["audio_s"] / 3600, 2),
-            "speed": round(s["audio_s"] / s["busy_s"], 1) if s["busy_s"] else None}
+            "speed": round(s["audio_s"] / s["busy_s"], 1) if s["busy_s"] else None,
+            "card_memory": round(share, 2) if share is not None else None}
 
 
 @app.post("/decode")
@@ -77,7 +113,23 @@ async def decode(request: Request):
         return out
 
     import anyio
-    got = await anyio.to_thread.run_sync(work)
+    with _slock:
+        _busy[0] += 1
+    try:
+        got = await anyio.to_thread.run_sync(work)
+    except Exception as e:  # noqa: BLE001
+        if any(k in str(e).lower() for k in _CARD_ERRORS):     # the card is out of memory: start fresh
+            _restart("the card ran out of memory")
+            raise HTTPException(503, "restarting")
+        raise
+    finally:
+        with _slock:
+            _busy[0] -= 1
+            idle = _busy[0] == 0
+    if idle:
+        share = _card_share()
+        if share is not None and share >= MEM_FULL:            # nearly full: start fresh now, before requests fail
+            _restart(f"card memory {share:.0%} in use")
     return {"lang": lang, "pieces": [{"tokens": tok, "timestamps": ts} for tok, ts in got]}
 
 
