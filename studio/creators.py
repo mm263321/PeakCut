@@ -17,7 +17,7 @@ def _root() -> Path:
 _lock = threading.RLock()
 
 DEFAULTS = {"name": "", "channel": "", "style": "bounce", "layout": "blur", "captions": True,
-            "clip_method": "peakcut", "min_len": 15, "max_len": 60,
+            "clip_method": "peakcut", "clip_selection": "balanced", "min_len": 15, "max_len": 60,
             "max_clips": 6, "min_score": 80, "auto_watch": False, "buffer_min": 20, "live_per_hour": 4, "ai_every_min": 3, "ai_only_on_spike": True, "auto_jump_pct": 60,
             "decide_mode": "both", "must_clip_min": 0, "min_gap_min": 2,
             "game": "", "hook_text": "", "description_text": "",
@@ -473,6 +473,8 @@ def _clean(data: dict) -> dict:
             v = max(0.0, min(1000.0, float(v or 0)))
         elif k == "clip_method":
             v = v if v in ("peakcut", "advanced") else "peakcut"
+        elif k == "clip_selection":
+            v = v if v in ("balanced", "global") else "balanced"
         elif k == "plan":
             v = v if v in ("free", "pro", "max") else "free"
         elif k == "decide_mode":
