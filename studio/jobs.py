@@ -1578,7 +1578,9 @@ def _run_job(job):
         if not forcing:
             words += [dict(w, s=round(w["s"] + shift, 2), e=round(w["e"] + shift, 2)) for w in bw]
             (d / "words.json").write_text(json.dumps(words), encoding="utf-8")
-        _set(job, stage=("Looking closely for the best moments" if forcing else "Finding the best moments") + where, word_count=len(words))
+        stage = ("Collecting candidates for Global Top N" if global_selection else
+                 "Looking closely for the best moments" if forcing else "Finding the best moments")
+        _set(job, stage=stage + where, word_count=len(words))
         left = int(o["max_clips"]) - len(job["clips"])
         if left <= 0 or len(bw) < 8:
             job["done_blocks"] = bi + 1
@@ -1695,7 +1697,8 @@ def _run_job(job):
         for clip in job["clips"]:
             futures.append((renders.submit(ctx.bind(make), clip, list(words)), clip))
     if futures:
-        _set(job, stage="Finishing the clips", progress=max(job["progress"], 0.92))
+        _set(job, stage=("Rendering the globally selected clips" if global_selection else "Finishing the clips"),
+             progress=max(job["progress"], 0.92))
     _wait_for_clips(job, futures, began, renders._max_workers)
     if exact:           # keep our own words for the clips in the saved transcript, so editing a clip later uses them
         for a_s, b_s, tw in exact.values():
