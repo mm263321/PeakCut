@@ -407,6 +407,18 @@ Return the {n} best moments there are: the most interesting, funny, surprising, 
 even if they are only mildly good. Still start on a full sentence and end after a payoff. Score them honestly.
 """
 
+GLOBAL_SCORE_NOTE = """
+GLOBAL TOP N SCORING:
+Candidates from separate sections of this same video will be compared later. Use one consistent, strict scoring
+scale for every section; do not give a moment a high score just because it is the best in its local section.
+90-100: exceptional, instantly compelling moment with a strong payoff.
+80-89: very strong, clear entertainment or reaction with a satisfying payoff.
+70-79: good, self-contained moment with a clear hook.
+50-69: ordinary or only mildly interesting.
+Below 50: weak; return it only when no stronger moment exists.
+Score the actual clip quality, not how unusual the topic sounds.
+"""
+
 
 def select_global_top(candidates, max_clips=6):
     """Pick the highest-scoring non-overlapping moments across the whole source video.
@@ -437,7 +449,7 @@ def select_global_top(candidates, max_clips=6):
 
 
 def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=15, max_len=60, log=print, game=None,
-               force=False, focus=""):
+               force=False, focus="", global_rank=False):
     """The best moments of a video. With force, the AI must return its best moments instead of none, and if it
     still returns nothing, the loudest stretches with speech are taken. `focus`: what the person clipping wants
     (a campaign's "what to look for"); `game`: the game being played, for its own rules and tags."""
@@ -458,7 +470,8 @@ def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=
         if len(chunk) < 3:
             continue
         prompt = (HEAD.format(title=_safe(title) or "unknown", uploader=_safe(uploader) or "unknown", n=per_window)
-                  + extra + (FORCE_NOTE.format(n=per_window) if force else "") + _focus(focus)
+                  + extra + (FORCE_NOTE.format(n=per_window) if force else "")
+                  + (GLOBAL_SCORE_NOTE if global_rank else "") + _focus(focus)
                   + _rules(min_len, max_len, _fmt(chunk)))
         if force:
             prompt = prompt.replace("Skip weak moments. Fewer strong clips beat many weak ones. Return [] if nothing is worth clipping.",
