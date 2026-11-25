@@ -408,6 +408,34 @@ even if they are only mildly good. Still start on a full sentence and end after 
 """
 
 
+def select_global_top(candidates, max_clips=6):
+    """Pick the highest-scoring non-overlapping moments across the whole source video.
+
+    Candidates passed here already have sentence-aware start/end times. Ranking happens
+    before any clip is rendered, so an excellent moment near the end can beat an average
+    moment near the beginning.
+    """
+    try:
+        limit = max(1, min(20, int(max_clips)))
+    except (TypeError, ValueError):
+        limit = 6
+    ranked = sorted(
+        (c for c in candidates if isinstance(c, dict)),
+        key=lambda c: (-_num(c.get("score"), 0), _num(c.get("start"), float("inf"))),
+    )
+    selected = []
+    for clip in ranked:
+        start, end = _num(clip.get("start"), -1), _num(clip.get("end"), -1)
+        if start < 0 or end <= start:
+            continue
+        if any(start < old["end"] and end > old["start"] for old in selected):
+            continue
+        selected.append(clip)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
 def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=15, max_len=60, log=print, game=None,
                force=False, focus=""):
     """The best moments of a video. With force, the AI must return its best moments instead of none, and if it
