@@ -1592,7 +1592,8 @@ def _run_job(job):
                            min(8, max(quota, quota * 2)) if o.get("clip_method", "peakcut") == "advanced" else quota)
         found, ai = brain.find_clips(bw, db[s0: s0 + int((b - a) / 16000) + 1], (b - a) / 16000, job["title"],
                                      job["uploader"], candidate_limit, int(o["min_len"]), int(o["max_len"]), notes.append,
-                                     game=game, force=bool(o.get("force")), focus=o.get("focus", ""))
+                                     game=game, force=bool(o.get("force")), focus=o.get("focus", ""),
+                                     global_rank=global_selection)
         tokens += ai.get("tokens", 0)
         model = ai.get("model") or model
         if ai.get("note"):
