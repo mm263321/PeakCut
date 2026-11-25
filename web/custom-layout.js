@@ -44,19 +44,25 @@
     "@media(max-width:900px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(100%,260px)}}";
 
   // PC CUSTOM LAYOUT ISOLATED OVERRIDES
-  // Keep this editor independent from the surrounding clip-dialog layout.
+  // When this editor is active, temporarily use the whole clip dialog as a workspace.
+  // The normal clip preview returns automatically when the custom editor is hidden.
   style.textContent +=
+    "#clipdlg:has(.pc-custom-layout:not([hidden])){width:min(96vw,1500px)!important;max-width:calc(100vw - 24px)!important;padding:0!important;overflow:hidden!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2{display:block!important;width:100%!important;height:min(860px,calc(100vh - 24px))!important;overflow:hidden!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-l{display:none!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-r{display:flex!important;width:100%!important;max-width:none!important;height:100%!important;min-width:0!important;overflow:auto!important}" +
     ".pc-custom-layout{width:100%;max-width:100%;min-width:0;box-sizing:border-box;display:flex!important;flex-direction:column!important;align-items:stretch!important}" +
     ".pc-layout-head{display:flex!important;flex-wrap:wrap;align-items:flex-start;min-width:0}" +
     ".pc-layout-head h3,.pc-layout-head .sub{max-width:100%;white-space:normal;overflow-wrap:anywhere}" +
-    ".pc-layout-grid{display:flex!important;flex-direction:column!important;align-items:stretch!important;width:100%;max-width:100%;min-width:0;gap:18px!important}" +
-    ".pc-layout-section{display:flex!important;flex-direction:column!important;align-items:stretch!important;width:100%!important;max-width:100%;min-width:0;gap:9px!important;position:relative}" +
+    ".pc-layout-grid{display:grid!important;grid-template-columns:minmax(0,1.25fr) minmax(250px,.75fr)!important;align-items:start!important;width:100%;max-width:100%;min-width:0;gap:20px!important}" +
+    ".pc-layout-section{display:flex!important;flex-direction:column!important;align-items:stretch!important;width:100%!important;max-width:100%;min-width:0;gap:10px!important;position:relative}" +
     ".pc-layout-section h4{display:block!important;position:static!important;float:none!important;transform:none!important;line-height:1.4!important;white-space:normal!important;overflow-wrap:anywhere;margin:0!important;padding:0!important}" +
     ".pc-layout-tools,.pc-layout-presets{display:flex!important;position:static!important;flex-direction:row!important;flex-wrap:wrap!important;align-items:center!important;align-content:flex-start;justify-content:flex-start;gap:6px!important;width:100%;max-width:100%;min-width:0}" +
-    ".pc-layout-tools button,.pc-layout-presets button{position:static!important;float:none!important;transform:none!important;flex:0 1 auto!important;width:auto!important;max-width:100%;height:auto!important;min-height:32px;line-height:1.3;white-space:normal!important;margin:0!important}" +
-    ".pc-source-stage{width:100%!important;max-width:100%}" +
-    ".pc-output-wrap{width:100%}" +
-    ".pc-output-stage{width:min(100%,260px)!important;max-width:100%}";
+    ".pc-layout-tools button,.pc-layout-presets button{position:static!important;float:none!important;transform:none!important;flex:0 1 auto!important;width:auto!important;max-width:100%;height:auto!important;min-height:34px;line-height:1.3;white-space:normal!important;margin:0!important}" +
+    ".pc-source-stage{width:100%!important;max-width:100%;aspect-ratio:16/9}" +
+    ".pc-output-wrap{width:100%;justify-content:center}" +
+    ".pc-output-stage{width:min(100%,280px)!important;max-width:100%}" +
+    "@media(max-width:900px){.pc-layout-grid{grid-template-columns:minmax(0,1fr)!important}.pc-output-stage{width:min(100%,240px)!important}}";
   document.head.append(style);
 
   const presets = {
