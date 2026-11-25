@@ -6,7 +6,7 @@ import tempfile
 os.environ["PEAKCUT_DATA"] = tempfile.mkdtemp(prefix="pc-global-")
 os.environ["DATABASE_URL"] = ""
 sys.path.insert(0, ".")
-from studio import brain  # noqa: E402
+from studio import brain, creators, jobs  # noqa: E402
 
 fails = []
 
@@ -37,6 +37,12 @@ check("does not exceed the requested clip count",
       len(brain.select_global_top(candidates, 2)) == 2)
 check("returns no clips for an empty candidate pool",
       brain.select_global_top([], 3) == [])
+check("job options accept Global Top N",
+      jobs.clean_options({"clip_selection": "global"})["clip_selection"] == "global")
+check("invalid job selection safely falls back to balanced",
+      jobs.clean_options({"clip_selection": "unknown"})["clip_selection"] == "balanced")
+check("creator preferences accept Global Top N",
+      creators._clean({"clip_selection": "global"})["clip_selection"] == "global")
 
 print("ALL PASSED" if not fails else f"{len(fails)} failed")
 sys.exit(1 if fails else 0)
