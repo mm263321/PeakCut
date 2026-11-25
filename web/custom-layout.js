@@ -44,13 +44,13 @@
     "@media(max-width:900px){.pc-layout-grid{grid-template-columns:1fr}.pc-output-stage{width:min(100%,260px)}}";
 
   // PC CUSTOM LAYOUT ISOLATED OVERRIDES
-  // When this editor is active, temporarily use the whole clip dialog as a workspace.
-  // The normal clip preview returns automatically when the custom editor is hidden.
+  // Keep the finished vertical clip preview visible while the custom editor gets a wide workspace.
   style.textContent +=
     "#clipdlg:has(.pc-custom-layout:not([hidden])){width:min(96vw,1500px)!important;max-width:calc(100vw - 24px)!important;padding:0!important;overflow:hidden!important}" +
-    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2{display:block!important;width:100%!important;height:min(860px,calc(100vh - 24px))!important;overflow:hidden!important}" +
-    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-l{display:none!important}" +
-    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-r{display:flex!important;width:100%!important;max-width:none!important;height:100%!important;min-width:0!important;overflow:auto!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2{display:grid!important;grid-template-columns:minmax(300px,min(32vw,420px)) minmax(0,1fr)!important;width:100%!important;height:min(860px,calc(100vh - 24px))!important;overflow:hidden!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-l{display:flex!important;align-items:center!important;justify-content:center!important;min-width:0!important;min-height:0!important;overflow:hidden!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-box{width:100%!important;height:auto!important;max-height:100%!important;aspect-ratio:9/16!important}" +
+    "#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-r{display:flex!important;width:auto!important;max-width:none!important;height:100%!important;min-width:0!important;overflow:auto!important}" +
     ".pc-custom-layout{width:100%;max-width:100%;min-width:0;box-sizing:border-box;display:flex!important;flex-direction:column!important;align-items:stretch!important}" +
     ".pc-layout-head{display:flex!important;flex-wrap:wrap;align-items:flex-start;min-width:0}" +
     ".pc-layout-head h3,.pc-layout-head .sub{max-width:100%;white-space:normal;overflow-wrap:anywhere}" +
@@ -62,7 +62,7 @@
     ".pc-source-stage{width:100%!important;max-width:100%;aspect-ratio:16/9}" +
     ".pc-output-wrap{width:100%;justify-content:center}" +
     ".pc-output-stage{width:min(100%,280px)!important;max-width:100%}" +
-    "@media(max-width:900px){.pc-layout-grid{grid-template-columns:minmax(0,1fr)!important}.pc-output-stage{width:min(100%,240px)!important}}";
+    "@media(max-width:900px){#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(180px,36vh) minmax(0,1fr)!important}#clipdlg:has(.pc-custom-layout:not([hidden])) .ce2-l{min-height:0!important}.pc-layout-grid{grid-template-columns:minmax(0,1fr)!important}.pc-output-stage{width:min(100%,240px)!important}}";
   document.head.append(style);
 
   const presets = {
