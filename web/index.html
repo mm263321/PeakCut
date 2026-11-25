@@ -6366,6 +6366,45 @@ function drawClipDlg(full) {
   // Custom layout, text position and trim widgets are initialized only after their dialog markup exists.
   if (full) { window.initPeakCutCustomLayout?.(); initClipPositionEditor(); initClipTrimEditor(); }
 }
+function cdView(k) {
+  D.view = k; $("#stage").hidden = k === "preview"; $("#cdprev").hidden = k !== "preview";
+  const v = $("#stage video"); if (v && k === "preview") v.pause();
+}
+// The clip's own player: a big play button in the middle, and one thin bar: play, seek, time, sound, full screen.
+const VP = {play: '<svg viewBox="0 0 24 24"><path d="M8 5.6v12.8a1 1 0 0 0 1.5.86l10.2-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6Z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>',
+  vol: '<svg viewBox="0 0 24 24"><path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.6a.8.8 0 0 0 1.3-.6V5.5a.8.8 0 0 0-1.3-.6L8 8.5H5a1 1 0 0 0-1 1Z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>',
+  mute: '<svg viewBox="0 0 24 24"><path d="M4 9.5v5a1 1 0 0 0 1 1h3l4.4 3.6a.8.8 0 0 0 1.3-.6V5.5a.8.8 0 0 0-1.3-.6L8 8.5H5a1 1 0 0 0-1 1Z" fill="currentColor"/><path d="m17 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+  fs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>'};
+function vpWire() {
+  const box = $("#clipdlg .vp"); if (!box || box.dataset.w) return; box.dataset.w = "1";
+  const v = $("video", box), pp = $(".vp-pp", box), big = $(".vp-big", box), seek = $(".vp-seek", box), t = $(".vp-t", box), mu = $(".vp-mute", box);
+  const toggle = () => v.paused ? v.play() : v.pause();
+  const paint = () => { box.classList.toggle("paused", v.paused); pp.innerHTML = v.paused ? VP.play : VP.pause; mu.innerHTML = v.muted ? VP.mute : VP.vol; };
+  const time = () => { const d = v.duration || 0; seek.value = d ? Math.round(v.currentTime / d * 1000) : 0; seek.style.setProperty("--p", (seek.value / 10) + "%"); t.textContent = `${fmt(v.currentTime)} / ${fmt(d)}`; };
+  v.addEventListener("click", toggle); big.addEventListener("click", toggle); pp.addEventListener("click", toggle);
+  ["play", "pause", "volumechange"].forEach(e => v.addEventListener(e, paint));
+  ["timeupdate", "loadedmetadata"].forEach(e => v.addEventListener(e, time));
+  seek.addEventListener("input", () => { if (v.duration) v.currentTime = seek.value / 1000 * v.duration; time(); });
+  mu.addEventListener("click", () => { v.muted = !v.muted; });
+  $(".vp-fs", box).addEventListener("click", () => document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.());
+  paint(); time();
+}
+function cdCal() {
+  const box = $("#cdcal"); if (!box) return;
+  const m = D.cal, [g0, n] = schGrid(m, "month"), today = schKey(Date.now()), sel = schKey(S.schAdd.t), mon = new Date(m).getMonth();
+  const first = schMonth(), last = schMonth(Date.now() + 365 * SCH_DAY);
+  box.innerHTML = `<div class="ce3-cal"><div class="ce3-ch"><button type="button" class="btn icon sm ghost" data-act="cdcalm" data-n="-1"${m <= first ? " disabled" : ""} aria-label="Previous month"><span class="flip">${ic("arrowr")}</span></button>
+    <b>${new Date(m).toLocaleDateString([], {month: "long", year: "numeric"})}</b><button type="button" class="btn icon sm ghost" data-act="cdcalm" data-n="1"${m >= last ? " disabled" : ""} aria-label="Next month">${ic("arrowr")}</button></div>
+    <div class="ce3-g">${["M", "T", "W", "T", "F", "S", "S"].map(x => `<span>${x}</span>`).join("")}${Array.from({length: n}, (_, i) => { const t = schAdd(g0, i), k = schKey(t), dt = new Date(t), off = t + SCH_DAY <= Date.now();
+      return `<button type="button" class="${k === sel ? "on" : ""}${k === today ? " td" : ""}${dt.getMonth() !== mon ? " out" : ""}" data-act="cdday" data-t="${t}"${off ? " disabled" : ""}>${dt.getDate()}</button>`; }).join("")}</div></div>`;
+}
+function cdLabel() {        // the post button says what will happen
+  const b = $("#clipdlg [data-act=cdgo]"); if (!b) return;
+  const n = $$("#clipdlg [data-pacc]:checked").length, a = S.schAdd, dt = new Date(a.t); dt.setHours(a.h, a.m, 0, 0);
+  const who = n ? ` to ${n} account${n > 1 ? "s" : ""}` : "";
+  b.innerHTML = D.when === "now" ? `${ic("send")}Post now${who}` : `${ic("cal")}Schedule · ${esc(dt.toLocaleDateString([], {weekday: "short", day: "numeric"}))}, ${esc(schHl(a.h).replace(" ", `:${String(a.m).padStart(2, "0")} `))}`;
+}
 function postText() {   // the post text as it is in the clip editor right now
   const v = k => $(`#clipdlg [data-tx="${k}"]`)?.value || "";
   return {title: v("title"), description: v("description"), hashtags: v("hashtags").split(/\s+/).map(h => h.replace(/^#+/, "")).filter(Boolean)};
