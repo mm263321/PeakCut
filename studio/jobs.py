@@ -112,7 +112,7 @@ _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 2160,
-            "clip_method": "peakcut", **export_settings.DEFAULTS,
+            "clip_method": "peakcut", "clip_selection": "balanced", **export_settings.DEFAULTS,
             "range_start": None, "range_end": None, "captions": True, "hook_text": "", "description_text": "",
             "lang": "en", "filter": "original", "filter_strength": 70, "audio_language": "",
             "template": "", "cap_lang": ""}   # spoken language and optional caption language
@@ -151,6 +151,8 @@ def clean_options(options) -> dict:
             v = max(0, min(100, int(float(v))))
         elif k == "clip_method":
             v = v if v in ("peakcut", "advanced") else DEFAULTS["clip_method"]
+        elif k == "clip_selection":
+            v = v if v in ("balanced", "global") else DEFAULTS["clip_selection"]
         elif k == "style":
             v = v if v in render.STYLES else DEFAULTS["style"]
         elif k == "layout":
@@ -175,7 +177,7 @@ def job_dir(jid) -> Path:
     return Path(_jobs[jid]["dir"])
 
 
-HIDDEN = ("dir", "user", "source_path", "recover", "live_state")
+HIDDEN = ("dir", "user", "source_path", "recover", "live_state", "_global_selected")
 
 
 def public(job) -> dict:
@@ -399,7 +401,7 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
         s = creators.settings_for(c, camp)          # a campaign's own result rules win over the creator's
         base = {**DEFAULTS, **{k: s[k] for k in (
                     "max_clips", "min_len", "max_len", "style", "layout", "captions", "lang",
-                    "clip_method", "export_resolution", "export_encoder", "export_quality",
+                    "clip_method", "clip_selection", "export_resolution", "export_encoder", "export_quality",
                     "filter", "filter_strength", "quality", "template", "cap_lang",
                 ) if k in s},
                 "hook_text": creators.clean_hook(s.get("hook_text")),
@@ -1267,6 +1269,9 @@ def _run_job(job):
     d = Path(job["dir"])
     o = job["options"]
     src = job["source"]
+    global_selection = o.get("clip_selection", "balanced") == "global"
+    global_candidates_path = d / "global_candidates.json"
+    global_candidates = []
     # Which game this is: what the creator set, or what the title says. It decides the extra rules the AI
     # reads and the tags every post carries.
     game = job.get("game") or ""
@@ -1294,6 +1299,19 @@ def _run_job(job):
         _set(job, status="running", stage="Getting the video again", progress=0.05, error=None, clips=[], done_blocks=0)
     else:
         _set(job, status="running", stage="Getting the audio", progress=0.03, error=None, clips=[], ai={}, done_blocks=0)
+    if global_selection:
+        if forcing:
+            global_candidates_path.unlink(missing_ok=True)
+            job.pop("_global_selected", None)
+        elif resuming and not job.get("_global_selected"):
+            try:
+                loaded = json.loads(global_candidates_path.read_text(encoding="utf-8"))
+                global_candidates = loaded if isinstance(loaded, list) else []
+            except (OSError, ValueError):
+                global_candidates = []
+        elif not resuming:
+            global_candidates_path.unlink(missing_ok=True)
+            job.pop("_global_selected", None)
     speech = o.get("lang") if fetch_model.known(o.get("lang")) else fetch_model.DEFAULT   # the language spoken
     if not forcing:
         if speech == fetch_model.DEFAULT and not transcribe.model_ready() and not transcribe.REMOTE:
@@ -1568,7 +1586,8 @@ def _run_job(job):
             continue
         quota = max(1, math.ceil(left / (len(blocks) - bi)))
         s0 = int((a - lo) / 16000)
-        candidate_limit = min(8, max(quota, quota * 2)) if o.get("clip_method", "peakcut") == "advanced" else quota
+        candidate_limit = (min(20, max(8, int(o["max_clips"]) * 2)) if global_selection else
+                           min(8, max(quota, quota * 2)) if o.get("clip_method", "peakcut") == "advanced" else quota)
         found, ai = brain.find_clips(bw, db[s0: s0 + int((b - a) / 16000) + 1], (b - a) / 16000, job["title"],
                                      job["uploader"], candidate_limit, int(o["min_len"]), int(o["max_len"]), notes.append,
                                      game=game, force=bool(o.get("force")), focus=o.get("focus", ""))
@@ -1588,6 +1607,31 @@ def _run_job(job):
                 else:
                     keep.append(c)
             found = keep
+        if global_selection:
+            if found:
+                if o.get("clip_method", "peakcut") == "advanced":
+                    # Global ranking must compare like with like, so every transcript candidate gets
+                    # the same visual review before the final top-N selection.
+                    reviewed = []
+                    for offset in range(0, len(found), 8):
+                        batch = found[offset:offset + 8]
+                        for index, clip in enumerate(batch, start=offset):
+                            clip["id"] = clip.get("id") or f"candidate{bi:03d}_{index:02d}"
+                        batch, visual_tokens, _visual_used = review_visual(batch, shift)
+                        tokens += visual_tokens
+                        reviewed.extend(batch)
+                    found = reviewed
+                else:
+                    for c in found:
+                        c["start"], c["end"] = round(c["start"] + shift, 2), round(c["end"] + shift, 2)
+                global_candidates.extend(found)
+                temp_candidates = global_candidates_path.with_suffix(".json.tmp")
+                temp_candidates.write_text(json.dumps(global_candidates, ensure_ascii=False), encoding="utf-8")
+                temp_candidates.replace(global_candidates_path)
+            job["ai"] = {"model": model, "tokens": tokens, "note": "", "log": notes[-5:]}
+            job["done_blocks"] = bi + 1
+            save(job)
+            continue
         if found:
             if o.get("clip_method", "peakcut") == "advanced":
                 found, visual_tokens, _visual_used = review_visual(found, shift)
@@ -1620,6 +1664,36 @@ def _run_job(job):
         job["ai"] = {"model": model, "tokens": tokens, "note": "", "log": notes[-5:]}
         job["done_blocks"] = bi + 1       # a restart from here on carries on with the next part
         save(job)
+    if global_selection and not job.get("_global_selected"):
+        # Select the final clips only after every transcript block has contributed candidates.
+        selected = brain.select_global_top(global_candidates, int(o["max_clips"]))
+        selected_ids = {c.get("id") for c in selected}
+        for candidate in global_candidates:
+            if candidate.get("id") not in selected_ids and candidate.get("src"):
+                Path(candidate["src"]).unlink(missing_ok=True)
+        job["clips"] = []
+        for index, c in enumerate(sorted(selected, key=lambda x: float(x.get("start", 0))), start=1):
+            c.update(id=f"clip{index:02d}", style=o["style"], layout=o["layout"],
+                     captions=o.get("captions", True), status="queued", version=0,
+                     **export_settings.clean(o))
+            if o.get("look"):
+                c.update(look=o["look"], template=o.get("template", ""))
+            if o.get("hook_text"):
+                c["hook"] = o["hook_text"]
+            if o.get("description_text"):
+                c["description"], c["fixed_description"] = o["description_text"], True
+            else:
+                hashtags.apply(c, words, job["title"], job["uploader"], game)
+            if o["layout"] == "gameplay" and face is False:
+                face = _facecam(job)
+            if face:
+                c["facecam"] = face
+            job["clips"].append(c)
+        job["_global_selected"] = True
+        job["done_blocks"] = len(blocks)
+        save(job)  # persist the final selection before starting render, so a restart cannot select twice
+        for clip in job["clips"]:
+            futures.append((renders.submit(ctx.bind(make), clip, list(words)), clip))
     if futures:
         _set(job, stage="Finishing the clips", progress=max(job["progress"], 0.92))
     _wait_for_clips(job, futures, began, renders._max_workers)
@@ -1632,6 +1706,8 @@ def _run_job(job):
     ahead.shutdown(wait=False)
     fetch.shutdown(wait=False)
     o.pop("force", None)
+    if global_selection:
+        global_candidates_path.unlink(missing_ok=True)
     clips = [c for c in job["clips"] if c.get("status") != "dropped"]
     if not clips:
         job["empty_since"] = time.time()     # its source is kept a few days, for "Clip anyway"
