@@ -17,10 +17,10 @@
     ".pc-custom-layout{margin:14px 0;padding:14px;border:1px solid var(--line-2);border-radius:14px;background:var(--muted);display:grid;gap:14px}" +
     ".pc-custom-layout[hidden]{display:none!important}" +
     ".pc-layout-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.pc-layout-head h3{margin:0}" +
-    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(260px,.95fr);gap:16px;align-items:start}" +
+    ".pc-layout-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start;min-width:0}" +
     ".pc-layout-section{min-width:0;display:grid;gap:9px}.pc-layout-section h4{margin:0;font-size:13px}" +
-    ".pc-layout-tools,.pc-layout-presets{display:flex;flex-wrap:wrap;gap:6px}" +
-    ".pc-layout-tools button,.pc-layout-presets button{font-size:12px;padding:7px 9px}" +
+    ".pc-layout-tools,.pc-layout-presets{display:flex;flex-wrap:wrap;gap:6px;min-width:0}" +
+    ".pc-layout-tools button,.pc-layout-presets button{font-size:12px;padding:7px 9px;max-width:100%;white-space:normal}" +
     ".pc-layout-tools button.on,.pc-layout-presets button.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep)}" +
     ".pc-source-stage{position:relative;width:100%;max-width:100%;aspect-ratio:16/9;background:#171310;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;touch-action:none}" +
     ".pc-source-stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:#171310}" +
